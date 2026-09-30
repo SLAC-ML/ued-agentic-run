@@ -1,0 +1,40 @@
+# Local assets (licensed GPT binaries, colleague-provided data) -- not tracked
+/assets/
+
+# OS / editor cruft
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+*~
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Environment / secrets
+.env
+.env.*
+
+# GPT simulation outputs (large binary files, regenerate with gpt/gdfa)
+*.gdf
+
+# Logs / scratch
+*.log
+*.out
+*.err
