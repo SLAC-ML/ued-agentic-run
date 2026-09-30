@@ -4,7 +4,7 @@ Scripts for running the UED beamline deck with GPT 3.43 (Linux build) on S3DF.
 They are deployed to `/sdf/group/mli/zhezhang/ued/agentic/scripts/`
 (`~/group/ued/agentic/scripts/` on `ssh iana`):
 
-    rsync -av s3df/ iana:group/ued/agentic/scripts/
+    rsync -av s3df/ iana:/sdf/group/mli/zhezhang/ued/agentic/scripts/
 
 ## Layout on S3DF
 
