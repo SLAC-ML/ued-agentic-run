@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UED Bring-up Simulations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column (max 72rem), same system as gpt-crosscheck.html:
+   verdict + safety note, answered questions, to-scale beamline, one section
+   per bring-up stage with data-drawn charts, what is still needed. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #152030;
+  --muted: #586478;
+  --rule: #d8dee7;
+  --chip: #e6ebf2;
+  --accent: #2456c9;
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --seq: #184f95;
+  --good: #0ca30c;
+  --warn: #c98500;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1219; --surface: #141b25; --ink: #e4e8ef; --muted: #96a1b3; --rule: #283241;
+    --chip: #1e2733; --accent: #82a4ff; --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+    --seq: #5598e7; --good: #0ca30c; --warn: #fab219;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1219; --surface: #141b25; --ink: #e4e8ef; --muted: #96a1b3; --rule: #283241;
+  --chip: #1e2733; --accent: #82a4ff; --s1: #3987e5; --s2: #d95926; --s3: #199e70;
+  --seq: #5598e7; --good: #0ca30c; --warn: #fab219;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 16px; line-height: 1.55;
+  padding-inline: 16px; padding-block: 0 48px;
+}
+.wrap { max-width: 72rem; margin-inline: auto; display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(1.9rem, 4vw, 2.75rem); font-weight: 600; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 600; }
+h3 { font-size: 1.2rem; font-weight: 600; }
+p { margin: 0; }
+code, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+code { font-size: .9em; }
+.eyebrow { font-family: var(--mono); font-size: .8125rem; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.muted { color: var(--muted); }
+.section { display: grid; gap: 20px; }
+.section-head { display: grid; gap: 8px; max-width: 70ch; }
+.prose { display: grid; gap: 10px; max-width: 70ch; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Top bar and theme switch */
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block: 20px; border-bottom: 1px solid var(--rule); }
+.theme-btn {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font: 500 .875rem var(--body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px 6px 10px;
+}
+.theme-btn:hover { border-color: var(--muted); }
+.theme-btn svg { width: 18px; height: 18px; }
+.theme-btn .moon { display: none; }
+.is-dark .theme-btn .sun { display: none; }
+.is-dark .theme-btn .moon { display: block; }
+
+/* Hero */
+.hero { display: grid; gap: 20px; }
+.lede { font-size: 1.125rem; max-width: 64ch; }
+.safety { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px; max-width: 70ch; }
+.safety svg { width: 22px; height: 22px; color: var(--good); margin-top: 2px; }
+.safety p { font-size: .9375rem; }
+.findings { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; max-width: 74ch; }
+.findings li { display: grid; grid-template-columns: 9.5rem 1fr; gap: 12px; align-items: baseline; }
+@media (max-width: 560px) { .findings li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Chips and status */
+.chip { display: inline-block; font: 500 .75rem var(--mono); letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--rule); color: var(--muted); white-space: nowrap; }
+.status { display: inline-flex; align-items: center; gap: 6px; font: 500 .8125rem var(--mono); white-space: nowrap; color: var(--ink); }
+.status::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--muted); flex: none; }
+.status.answered::before { background: var(--good); border-color: var(--good); }
+.status.partly::before { background: linear-gradient(90deg, var(--warn) 50%, transparent 50%); border-color: var(--warn); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+th { font: 500 .75rem var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); vertical-align: bottom; }
+th .u { text-transform: none; letter-spacing: 0; }
+td.num, th.num { text-align: right; white-space: nowrap; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.t-q { min-width: 13rem; font-weight: 500; }
+.t-wide { min-width: 22rem; }
+.w-640 { min-width: 640px; }
+.w-760 { min-width: 760px; }
+
+/* Beamline strips */
+.beamline { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 8px 2px; overflow-x: auto; }
+.beamline svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.bl-text { fill: var(--ink); font: 500 13px var(--body); }
+.bl-sub { fill: var(--muted); font: 400 11.5px var(--mono); }
+.bl-line { stroke: var(--muted); stroke-width: 2; }
+.bl-axis { stroke: var(--rule); stroke-width: 1; }
+.bl-tick { stroke: var(--muted); stroke-width: 1; }
+.bl-el { fill: var(--muted); }
+.bl-box { fill: none; stroke: var(--muted); stroke-width: 2; }
+.bl-plane { stroke: var(--ink); stroke-width: 2; }
+.bl-rough { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 2; }
+.bl-zoom { fill: none; stroke: var(--rule); stroke-width: 1; stroke-dasharray: 4 3; }
+.key-row { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: .875rem; color: var(--muted); }
+.key-row span { display: inline-flex; align-items: center; gap: 8px; }
+.k-solid { width: 12px; height: 12px; background: var(--muted); display: inline-block; border-radius: 2px; }
+.k-rough { width: 12px; height: 12px; border: 1.5px dashed var(--muted); display: inline-block; transform: rotate(45deg); }
+
+/* Charts */
+.charts-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 14px 8px; display: grid; gap: 8px; min-width: 0; }
+.card h4 { margin: 0; font: 600 .9375rem var(--body); }
+.card .sub { font-size: .8125rem; color: var(--muted); }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.ax-t { fill: var(--muted); font: 400 11px var(--mono); }
+.ax-l { fill: var(--muted); font: 500 11.5px var(--body); }
+.grid-l { stroke: var(--rule); stroke-width: 1; }
+.base-l { stroke: var(--muted); stroke-width: 1; }
+.ref-l { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.ref-t { fill: var(--muted); font: 400 11px var(--mono); }
+.ln { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.c1 { stroke: var(--s1); } .f1 { fill: var(--s1); }
+.c2 { stroke: var(--s2); } .f2 { fill: var(--s2); }
+.c3 { stroke: var(--s3); } .f3 { fill: var(--s3); }
+.mk { stroke: var(--surface); stroke-width: 2; }
+.xh { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.cell { fill: var(--seq); stroke: var(--surface); stroke-width: 1; }
+.cell-hit { fill: transparent; }
+.cell-hot { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.plot-bg { fill: var(--surface); stroke: var(--rule); }
+.mark-o { fill: none; stroke: var(--ink); stroke-width: 2; }
+.mark-p { stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.mark-t { fill: var(--ink); font: 600 12px var(--body); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.tip { position: absolute; pointer-events: none; z-index: 2; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 9px; font: 12px/1.45 var(--mono); color: var(--ink); white-space: nowrap; box-shadow: 0 4px 14px rgb(0 0 0 / .14); }
+.tip b { font-weight: 500; color: var(--muted); }
+.tip i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .8125rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+details { font-size: .875rem; }
+details summary { cursor: pointer; color: var(--muted); }
+details .table-wrap { margin-top: 8px; }
+
+/* Explainer boxes and notes */
+.explain { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 16px; }
+.box { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.box h4 { margin: 0; font: 600 1rem var(--body); display: flex; align-items: center; gap: 9px; }
+.box p, .box li { font-size: .9375rem; }
+.box ol { margin: 0; padding-left: 1.2rem; display: grid; gap: 4px; }
+.needs { margin: 0; padding-left: 1.2rem; display: grid; gap: 8px; max-width: 74ch; }
+.needs li::marker { color: var(--muted); }
+footer { border-top: 1px solid var(--rule); padding-top: 16px; font-size: .8125rem; color: var(--muted); display: grid; gap: 4px; }
+footer code { overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: no-preference) { .theme-btn { transition: border-color .15s; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <span class="eyebrow">UED bring-up · simulated stages</span>
+    <button class="theme-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme">
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <span id="theme-label">Light</span>
+    </button>
+  </div>
+
+  <header class="hero">
+    <span class="eyebrow">GPT 3.43 on S3DF · May 2025 working point · 10 fC · 3.1 MeV</span>
+    <h1>Collimator alignment and gun ramp-up, simulated</h1>
+    <p class="lede">Fuhao's kicker sketch, the SSUED schematic and the current gun ramp script are now a beamline model with all twelve steering kickers, a Python runner for scans, and a simulation for each bring-up stage. Both stages behave the way their procedures expect. What's missing is mostly calibration data.</p>
+    <div class="safety" role="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.3 8.3-8 9-4.7-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+      <p><strong>Simulation only.</strong> Nothing here wrote to the machine. On <code>ued-daq</code> the work was read-only: reading config files and PV lists, and <code>caget</code> of hutch PVs. Nothing was run on <code>testfac-srv01</code>. The GPT runs and the ramp procedure ran on S3DF (<code>iana</code>), and the "gun" in the ramp tests is a Python model.</p>
+    </div>
+    <ul class="findings">
+      <li><span class="chip">collimator</span><span>A 150 µm laser-spot error on the cathode makes the whole beam miss the 100 µm hole. XC/YC00 bring the transmission back to 6.4 %, and XC/YC01 put the beam within 26 µm of the ANDOR1 centre.</span></li>
+      <li><span class="chip">ramp · beam</span><span>The beam barely leaves the gun below AREQ ≈ 0.13. From there the energy rises almost linearly to 3.1 MeV at 0.53, assuming AREQ is linear in field.</span></li>
+      <li><span class="chip">ramp · procedure</span><span>The ported ramp completes a normal ramp, and aborts cleanly on a cooling-water fault and on a feedback trip. The original script would keep ramping through the feedback trip.</span></li>
+    </ul>
+  </header>
+
+  <section class="section" aria-labelledby="q-h">
+    <div class="section-head">
+      <h2 id="q-h">What Fuhao's materials answered</h2>
+      <p class="muted">The kicker sketch, the labelled schematic and <code>ramp_rf.py</code>, checked against the open questions from the PV survey.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="w-760">
+        <thead><tr><th>Question</th><th>Status</th><th>What we know now</th></tr></thead>
+        <tbody>
+          <tr><td class="t-q">How to reach accelerator PVs</td><td><span class="status partly">partly</span></td><td class="t-wide"><code>ramp_rf.py</code> runs as <code>tfprod@testfac-srv01</code>, so gun RF, magnets and correctors are reached from there, not from <code>ued-daq</code>. The gun RF moved from klystron KY01 to KY03. Still open: read access for agents.</td></tr>
+          <tr><td class="t-q">Which camera sees the sample-plane YAG</td><td><span class="status partly">partly</span></td><td class="t-wide">The Diag YAG shares a holder with the Faraday cup, just before the collimator. So <code>UED:GIGE:09</code> ("DIAG YAG") is that upstream screen. The sample plane is <code>GIGE:13</code> or <code>GIGE:12</code>.</td></tr>
+          <tr><td class="t-q">Beamline positions</td><td><span class="status answered">answered</span></td><td class="t-wide">Sample and detector planes from the schematic: 1.499, 2.487, 3.988 and 4.631 m. The May 2025 deck had them 6–12 cm further downstream.</td></tr>
+          <tr><td class="t-q">Corrector order</td><td><span class="status answered">answered</span></td><td class="t-wide">XC/YC00–05 in beam order from the sketch, at rough positions. The run-4 PV unit numbers, 121 to 382, rise in the same order.</td></tr>
+          <tr><td class="t-q">Pump energy control, sample stage, shutter voltages, phosphor, chamber light</td><td><span class="status">open</span></td><td class="t-wide">Not covered by the new materials.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="bl-h">
+    <div class="section-head">
+      <h2 id="bl-h">The beamline model</h2>
+      <p class="muted">Both strips are to scale; the second zooms into the first 1.2 m. With every kicker at zero, the bring-up deck gives the same beam as the May 2025 deck. It's identical at 0.80 m (4038 particles, σ<sub>x</sub> = 23.681 µm) and within 0.2 % at the downstream planes. A +1 mrad kick from XC03 gives +0.9999 mrad, in the right plane and direction.</p>
+    </div>
+    <div class="key-row" aria-hidden="true">
+      <span><i class="k-solid"></i>position from the schematic or the May 2025 deck</span>
+      <span><i class="k-rough"></i>rough placement from the kicker sketch</span>
+    </div>
+    <div class="beamline" role="img" aria-label="Full beamline from the cathode to ANDOR1 at 4.631 m, with sample chambers, quads, THz chamber and kickers 02 to 05" id="bl-full"></div>
+    <div class="beamline" role="img" aria-label="Zoom of the first 1.2 m: gun, gun solenoid, kicker 00, Faraday cup and Diag YAG, collimator, kicker 01, solenoid 2, kicker 02" id="bl-zoom"></div>
+  </section>
+
+  <section class="section" aria-labelledby="ramp-h">
+    <div class="section-head">
+      <h2 id="ramp-h">Stage: gun ramp-up</h2>
+      <p class="muted">Two layers. The procedure, which only touches RF, runs against a virtual gun. The beam the gun produces along the way comes from GPT.</p>
+    </div>
+
+    <h3>The procedure, on a virtual gun</h3>
+    <div class="prose">
+      <p><code>bringup/gun_ramp.py</code> does what <code>ramp_rf.py</code> does. It sets AREQ to 0.05, turns on both feedbacks, then steps AREQ to the target in 300 steps of 2 s. Before every step it waits for the gun body temperature to be within 33–37 °C, and aborts to AREQ = 0 after 10 readings out of range in a row. It adds two checks: the feedbacks must read Active before the ramp and at every step, and the amplitude readback must track the setpoint.</p>
+    </div>
+    <div class="legend" id="ramp-legend" aria-hidden="true"></div>
+    <div class="charts-2">
+      <div class="card"><h4>Amplitude setpoint AREQ</h4><div class="chart" id="ch-areq"></div></div>
+      <div class="card"><h4>Gun body temperature</h4><span class="sub">dashed: the 33–37 °C window</span><div class="chart" id="ch-temp"></div></div>
+    </div>
+    <div class="table-wrap">
+      <table class="w-640">
+        <thead><tr><th>Scenario</th><th>Injected fault</th><th>Outcome</th><th class="num">Ends at</th><th class="num">Max temp</th></tr></thead>
+        <tbody>
+          <tr><td class="t-q">nominal</td><td>none</td><td>reaches AREQ = 0.53</td><td class="num">10.02 min</td><td class="num">35.85 °C</td></tr>
+          <tr><td class="t-q">cooling-water fault</td><td>water +3 °C at 5.0 min</td><td>holds at 6.52 min, aborts to AREQ = 0 at 6.82 min</td><td class="num">6.82 min</td><td class="num">37.27 °C</td></tr>
+          <tr><td class="t-q">feedback trip</td><td>amplitude feedback trips at 6.67 min</td><td>aborts to AREQ = 0 at the next step</td><td class="num">6.68 min</td><td class="num">35.15 °C</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="explain">
+      <div class="box">
+        <h4>How the cooling-water fault is made</h4>
+        <p>The virtual gun's body temperature relaxes toward <code>T_water + k·AACT²</code> (water temperature plus RF heating), with a 90 s time constant. The fault raises <code>T_water</code> from 34.6 to 37.6 °C at t = 300 s. The body warms toward about 38.4 °C, crosses 37 °C at 6.5 min, and the procedure's temperature gate holds the ramp. Ten readings later, 2 s apart, it gives up and sets AREQ to 0.</p>
+      </div>
+      <div class="box">
+        <h4>How the feedback trip is made</h4>
+        <p>At t = 400 s the model marks the amplitude feedback as tripped. From then on <code>AFBST</code> reads <code>Tripped</code> instead of <code>Active</code>, and the drive is held: the amplitude readback stops following the rising setpoint. The new per-step status check catches it at the next step. <code>ramp_rf.py</code> never reads the status during the ramp, so it would carry on.</p>
+      </div>
+      <div class="box">
+        <h4>What the model is not</h4>
+        <p>Every constant in <code>sim/virtual_gun.py</code> is a placeholder chosen to stay inside the window at 0.53: the water temperature, the heating coefficient, the 90 s time constant, the readback lag and noise. The model tests the procedure's logic, not the machine's real timing. The fault times are arbitrary.</p>
+      </div>
+    </div>
+
+    <h3>The beam along the ramp</h3>
+    <div class="prose">
+      <p>The same deck, with the gun field scaled by AREQ and the phase (37°) and solenoids at the operating point. <strong>Assumption:</strong> field is linear in AREQ, with 0.53 giving the deck's 68 MV/m (128.3 MV/m per unit). Fitting this curve to a spectrometer energy measurement at a few setpoints would give the real calibration.</p>
+    </div>
+    <div class="charts-2">
+      <div class="card"><h4>Beam kinetic energy after the gun</h4><div class="chart" id="ch-ke"></div></div>
+      <div class="card"><h4>Transmission through the 100 µm collimator</h4><span class="sub">gun solenoid held at the operating setting</span><div class="chart" id="ch-tr"></div></div>
+    </div>
+    <div class="prose">
+      <p>Below AREQ ≈ 0.13 the electrons slip out of phase in the full cell and leave with under 50 keV. Transmission peaks at 99 % near AREQ 0.41: at about 2.3 MeV the fixed gun solenoid focuses the beam right at the hole. At the operating point it's back to 6.3 %.</p>
+    </div>
+    <details>
+      <summary>Show the data</summary>
+      <div class="table-wrap"><table class="w-640" id="tbl-amp"></table></div>
+    </details>
+  </section>
+
+  <section class="section" aria-labelledby="col-h">
+    <div class="section-head">
+      <h2 id="col-h">Stage: collimator alignment</h2>
+      <p class="muted">Fuhao's procedure. XC/YC00, before the collimator, steer the beam through the hole. XC/YC01, after it, bring the transmitted beam back onto the target. The simulated tuner only uses what the machine would show: transmitted charge, and the beam centroid on ANDOR1.</p>
+    </div>
+    <div class="charts-2">
+      <div class="card"><h4>Transmission over XC00 × YC00</h4><span class="sub">121 GPT runs with the hidden cathode-spot error of +150 / −100 µm; hover a cell</span><div class="chart" id="ch-map"></div></div>
+      <div class="card"><h4>Beam centroid along the line</h4><div class="legend" id="prof-legend" aria-hidden="true"></div><div class="chart" id="ch-px"></div><div class="chart" id="ch-py"></div></div>
+    </div>
+    <div class="table-wrap">
+      <table class="w-760">
+        <thead><tr><th>Step</th><th class="num">XC/YC00 <span class="u">(mrad)</span></th><th class="num">XC/YC01 <span class="u">(mrad)</span></th><th class="num">Transmission</th><th class="num">Sample 1 <span class="u">x / y (µm)</span></th><th class="num">ANDOR1 <span class="u">x / y (µm)</span></th></tr></thead>
+        <tbody>
+          <tr><td class="t-q">start (misaligned)</td><td class="num">0 / 0</td><td class="num">0 / 0</td><td class="num">0 %</td><td class="num">beam lost</td><td class="num">beam lost</td></tr>
+          <tr><td class="t-q">after XC/YC00</td><td class="num">−1.207 / −0.573</td><td class="num">0 / 0</td><td class="num">6.4 %</td><td class="num">−896 / −705</td><td class="num">−3119 / −2442</td></tr>
+          <tr><td class="t-q">after XC/YC01</td><td class="num">−1.207 / −0.573</td><td class="num">+1.273 / +0.649</td><td class="num">6.4 %</td><td class="num">−124 / −104</td><td class="num">+24 / −26</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose">
+      <p>The XC/YC00 peak comes from a 2D Gaussian fit to the map. XC/YC01 come from a measured 2 × 2 response, about 2.8 mm per mrad at ANDOR1, applied twice. A third pass would take the last 25 µm out; the spot is 112 µm rms there.</p>
+      <p>XC/YC01 can only centre one plane. With the beam on ANDOR1, sample 1 is still about 160 µm off. Hitting both needs XC/YC02 as well. That's worth deciding before this becomes an agent tool.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="need-h">
+    <div class="section-head"><h2 id="need-h">Still needed</h2></div>
+    <ol class="needs">
+      <li><strong>The AREQ → MV/m calibration</strong>, and whether 0.53 is the deck's 68 MV/m.</li>
+      <li><strong>Archived AREQ, amplitude readback and gun temperature from a few past ramps</strong>, plus the RF pulse width, rep rate and cooling setpoint. These are needed to replace the virtual gun's placeholder constants.</li>
+      <li><strong>The status strings</strong> <code>PFBST</code> and <code>AFBST</code> can take, other than Active.</li>
+      <li><strong>The modulator mode and high-voltage PVs</strong> (TRIG, VoltSet = 980 V), so the manual preconditions can be checked instead of assumed.</li>
+      <li><strong>Corrector calibrations</strong> (kick per unit of <code>BCTRL</code>), better positions where anyone knows them, and the XC/YC05 PV.</li>
+      <li><strong>Read access to the <code>testfac-srv01</code> PVs</strong> for agents, to compare the simulations with the live machine.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <span>Code: <code>sim/</code> (deck, runner, stages, virtual gun) and <code>bringup/gun_ramp.py</code> in this repo. Results: <code>/sdf/group/mli/zhezhang/ued/agentic/runs/sim/</code>.</span>
+    <span>Simulations run 5 Oct 2026 on S3DF iana, GPT 3.43, 10,000 macroparticles with space charge, <code>-j 1</code>.</span>
+  </footer>
+</div>
+
+<script type="application/json" id="report-data">{"gun_amp":{"areq":[0.05,0.09,0.13,0.17,0.21,0.25,0.29,0.33,0.37,0.41,0.45,0.49,0.53],"gun_MV_per_m":[6.41509,11.54717,16.67925,21.81132,26.9434,32.07547,37.20755,42.33962,47.4717,52.60377,57.73585,62.86792,68.0],"KE_MeV":[0.01496,0.02005,0.05174,0.3632,0.74367,1.08824,1.40792,1.71061,2.00174,2.28418,2.56018,2.83107,3.09797],"transmission_pct":[0.28,0.34,0.28,0.31,0.59,0.6,1.53,5.46,43.37,98.85,22.09,10.31,6.26],"sx_sample_um":[27939.97562,29292.15945,1823.38342,559.85334,138.48786,47.86371,117.66535,51.99528,153.66627,175.55158,62.07679,32.13258,26.11338],"st_sample_fs":[114996.99965,1678514.91724,48168.41206,8871.33988,1964.80787,883.34813,451.77518,290.02427,198.29085,145.39724,112.02746,87.5117,71.20342],"dE_rel_sample":[0.01195,0.18505,0.01055,0.00693,0.0031,0.00217,0.00154,0.0013,0.00114,0.00109,0.00082,0.00067,0.00057]},"ramp_summary":{"nominal":{"ok":true,"reason":"reached target","final_areq":0.53,"sim_time_min":10.02,"max_temp_C":35.85},"water_fault":{"ok":false,"reason":"temperature out of range 10 times in a row","final_areq":0.0,"sim_time_min":6.82,"max_temp_C":37.27},"afb_trip":{"ok":false,"reason":"afb_status went 'Tripped'","final_areq":0.0,"sim_time_min":6.68,"max_temp_C":35.15}},"ramp_traces":{"nominal":[{"t":1.0,"step":0,"areq":0.05,"aact":0.0437,"temp":34.6291,"event":"feedbacks enabled"},{"t":3.0,"step":1,"areq":0.05,"aact":0.0498,"temp":34.601,"event":""},{"t":5.0,"step":2,"areq":0.0516,"aact":0.0516,"temp":34.6034,"event":""},{"t":7.0,"step":3,"areq":0.0532,"aact":0.0532,"temp":34.5997,"event":""},{"t":9.0,"step":4,"areq":0.0548,"aact":0.0548,"temp":34.6492,"event":""},{"t":11.0,"step":5,"areq":0.0564,"aact":0.0565,"temp":34.6057,"event":""},{"t":13.0,"step":6,"areq":0.058,"aact":0.058,"temp":34.6226,"event":""},{"t":15.0,"step":7,"areq":0.0596,"aact":0.0595,"temp":34.6114,"event":""},{"t":17.0,"step":8,"areq":0.0612,"aact":0.0612,"temp":34.6247,"event":""},{"t":19.0,"step":9,"areq":0.0628,"aact":0.0629,"temp":34.5816,"event":""},{"t":21.0,"step":10,"areq":0.0644,"aact":0.0647,"temp":34.6019,"event":""},{"t":23.0,"step":11,"areq":0.0661,"aact":0.066,"temp":34.5732,"event":""},{"t":25.0,"step":12,"areq":0.0677,"aact":0.0677,"temp":34.5786,"event":""},{"t":27.0,"step":13,"areq":0.0693,"aact":0.0694,"temp":34.5792,"event":""},{"t":29.0,"step":14,"areq":0.0709,"aact":0.071,"temp":34.6089,"event":""},{"t":31.0,"step":15,"areq":0.0725,"aact":0.0725,"temp":34.6286,"event":""},{"t":33.0,"step":16,"areq":0.0741,"aact":0.0739,"temp":34.622,"event":""},{"t":35.0,"step":17,"areq":0.0757,"aact":0.0755,"temp":34.6047,"event":""},{"t":37.0,"step":18,"areq":0.0773,"aact":0.0775,"temp":34.6164,"event":""},{"t":39.0,"step":19,"areq":0.0789,"aact":0.0788,"temp":34.6161,"event":""},{"t":41.0,"step":20,"areq":0.0805,"aact":0.0805,"temp":34.5845,"event":""},{"t":43.0,"step":21,"areq":0.0821,"aact":0.0817,"temp":34.6055,"event":""},{"t":45.0,"step":22,"areq":0.0837,"aact":0.0837,"temp":34.6355,"event":""},{"t":47.0,"step":23,"areq":0.0853,"aact":0.0854,"temp":34.5749,"event":""},{"t":49.0,"step":24,"areq":0.0869,"aact":0.087,"temp":34.5893,"event":""},{"t":51.0,"step":25,"areq":0.0885,"aact":0.0888,"temp":34.6265,"event":""},{"t":53.0,"step":26,"areq":0.0901,"aact":0.0899,"temp":34.6126,"event":""},{"t":55.0,"step":27,"areq":0.0917,"aact":0.0915,"temp":34.6073,"event":""},{"t":57.0,"step":28,"areq":0.0933,"aact":0.0935,"temp":34.6173,"event":""},{"t":59.0,"step":29,"areq":0.0949,"aact":0.0951,"temp":34.5882,"event":""},{"t":61.0,"step":30,"areq":0.0966,"aact":0.0965,"temp":34.6548,"event":""},{"t":63.0,"step":31,"areq":0.0982,"aact":0.0982,"temp":34.6176,"event":""},{"t":65.0,"step":32,"areq":0.0998,"aact":0.1,"temp":34.6359,"event":""},{"t":67.0,"step":33,"areq":0.1014,"aact":0.1015,"temp":34.6396,"event":""},{"t":69.0,"step":34,"areq":0.103,"aact":0.1029,"temp":34.5985,"event":""},{"t":71.0,"step":35,"areq":0.1046,"aact":0.1048,"temp":34.6238,"event":""},{"t":73.0,"step":36,"areq":0.1062,"aact":0.1065,"temp":34.6489,"event":""},{"t":75.0,"step":37,"areq":0.1078,"aact":0.1075,"temp":34.6,"event":""},{"t":77.0,"step":38,"areq":0.1094,"aact":0.1096,"temp":34.6491,"event":""},{"t":79.0,"step":39,"areq":0.111,"aact":0.1109,"temp":34.6022,"event":""},{"t":81.0,"step":40,"areq":0.1126,"aact":0.1127,"temp":34.6027,"event":""},{"t":83.0,"step":41,"areq":0.1142,"aact":0.114,"temp":34.6429,"event":""},{"t":85.0,"step":42,"areq":0.1158,"aact":0.116,"temp":34.634,"event":""},{"t":87.0,"step":43,"areq":0.1174,"aact":0.1172,"temp":34.6661,"event":""},{"t":89.0,"step":44,"areq":0.119,"aact":0.119,"temp":34.6094,"event":""},{"t":91.0,"step":45,"areq":0.1206,"aact":0.1207,"temp":34.6275,"event":""},{"t":93.0,"step":46,"areq":0.1222,"aact":0.1221,"temp":34.6272,"event":""},{"t":95.0,"step":47,"areq":0.1238,"aact":0.1237,"temp":34.6108,"event":""},{"t":97.0,"step":48,"areq":0.1255,"aact":0.1255,"temp":34.6637,"event":""},{"t":99.0,"step":49,"areq":0.1271,"aact":0.1273,"temp":34.6542,"event":""},{"t":101.0,"step":50,"areq":0.1287,"aact":0.1284,"temp":34.6735,"event":""},{"t":103.0,"step":51,"areq":0.1303,"aact":0.1303,"temp":34.6557,"event":""},{"t":105.0,"step":52,"areq":0.1319,"aact":0.1318,"temp":34.6518,"event":""},{"t":107.0,"step":53,"areq":0.1335,"aact":0.1337,"temp":34.6338,"event":""},{"t":109.0,"step":54,"areq":0.1351,"aact":0.1343,"temp":34.6484,"event":""},{"t":111.0,"step":55,"areq":0.1367,"aact":0.1368,"temp":34.6503,"event":""},{"t":113.0,"step":56,"areq":0.1383,"aact":0.1383,"temp":34.6185,"event":""},{"t":115.0,"step":57,"areq":0.1399,"aact":0.1398,"temp":34.661,"event":""},{"t":117.0,"step":58,"areq":0.1415,"aact":0.1421,"temp":34.6366,"event":""},{"t":119.0,"step":59,"areq":0.1431,"aact":0.1432,"temp":34.6534,"event":""},{"t":121.0,"step":60,"areq":0.1447,"aact":0.1448,"temp":34.615,"event":""},{"t":123.0,"step":61,"areq":0.1463,"aact":0.1464,"temp":34.6339,"event":""},{"t":125.0,"step":62,"areq":0.1479,"aact":0.1481,"temp":34.6623,"event":""},{"t":127.0,"step":63,"areq":0.1495,"aact":0.1498,"temp":34.6461,"event":""},{"t":129.0,"step":64,"areq":0.1511,"aact":0.1511,"temp":34.655,"event":""},{"t":131.0,"step":65,"areq":0.1527,"aact":0.1532,"temp":34.6869,"event":""},{"t":133.0,"step":66,"areq":0.1543,"aact":0.1547,"temp":34.6595,"event":""},{"t":135.0,"step":67,"areq":0.156,"aact":0.156,"temp":34.6957,"event":""},{"t":137.0,"step":68,"areq":0.1576,"aact":0.1569,"temp":34.7012,"event":""},{"t":139.0,"step":69,"areq":0.1592,"aact":0.1591,"temp":34.689,"event":""},{"t":141.0,"step":70,"areq":0.1608,"aact":0.1608,"temp":34.6687,"event":""},{"t":143.0,"step":71,"areq":0.1624,"aact":0.1621,"temp":34.6573,"event":""},{"t":145.0,"step":72,"areq":0.164,"aact":0.1647,"temp":34.6442,"event":""},{"t":147.0,"step":73,"areq":0.1656,"aact":0.1657,"temp":34.7006,"event":""},{"t":149.0,"step":74,"areq":0.1672,"aact":0.167,"temp":34.6481,"event":""},{"t":151.0,"step":75,"areq":0.1688,"aact":0.1687,"temp":34.6913,"event":""},{"t":153.0,"step":76,"areq":0.1704,"aact":0.1708,"temp":34.6769,"event":""},{"t":155.0,"step":77,"areq":0.172,"aact":0.1723,"temp":34.6739,"event":""},{"t":157.0,"step":78,"areq":0.1736,"aact":0.1733,"temp":34.7185,"event":""},{"t":159.0,"step":79,"areq":0.1752,"aact":0.175,"temp":34.7067,"event":""},{"t":161.0,"step":80,"areq":0.1768,"aact":0.1768,"temp":34.6912,"event":""},{"t":163.0,"step":81,"areq":0.1784,"aact":0.1783,"temp":34.6868,"event":""},{"t":165.0,"step":82,"areq":0.18,"aact":0.1799,"temp":34.7256,"event":""},{"t":167.0,"step":83,"areq":0.1816,"aact":0.1819,"temp":34.7129,"event":""},{"t":169.0,"step":84,"areq":0.1832,"aact":0.1834,"temp":34.6917,"event":""},{"t":171.0,"step":85,"areq":0.1848,"aact":0.185,"temp":34.6819,"event":""},{"t":173.0,"step":86,"areq":0.1865,"aact":0.1867,"temp":34.6918,"event":""},{"t":175.0,"step":87,"areq":0.1881,"aact":0.1881,"temp":34.6994,"event":""},{"t":177.0,"step":88,"areq":0.1897,"aact":0.1899,"temp":34.6632,"event":""},{"t":179.0,"step":89,"areq":0.1913,"aact":0.1912,"temp":34.695,"event":""},{"t":181.0,"step":90,"areq":0.1929,"aact":0.1927,"temp":34.68,"event":""},{"t":183.0,"step":91,"areq":0.1945,"aact":0.1952,"temp":34.703,"event":""},{"t":185.0,"step":92,"areq":0.1961,"aact":0.1963,"temp":34.696,"event":""},{"t":187.0,"step":93,"areq":0.1977,"aact":0.1977,"temp":34.7205,"event":""},{"t":189.0,"step":94,"areq":0.1993,"aact":0.1991,"temp":34.7154,"event":""},{"t":191.0,"step":95,"areq":0.2009,"aact":0.2011,"temp":34.7318,"event":""},{"t":193.0,"step":96,"areq":0.2025,"aact":0.202,"temp":34.7394,"event":""},{"t":195.0,"step":97,"areq":0.2041,"aact":0.2036,"temp":34.7216,"event":""},{"t":197.0,"step":98,"areq":0.2057,"aact":0.2054,"temp":34.6985,"event":""},{"t":199.0,"step":99,"areq":0.2073,"aact":0.207,"temp":34.7328,"event":""},{"t":201.0,"step":100,"areq":0.2089,"aact":0.2097,"temp":34.7088,"event":""},{"t":203.0,"step":101,"areq":0.2105,"aact":0.2107,"temp":34.7384,"event":""},{"t":205.0,"step":102,"areq":0.2121,"aact":0.2125,"temp":34.7674,"event":""},{"t":207.0,"step":103,"areq":0.2137,"aact":0.2134,"temp":34.705,"event":""},{"t":209.0,"step":104,"areq":0.2154,"aact":0.2153,"temp":34.7173,"event":""},{"t":211.0,"step":105,"areq":0.217,"aact":0.2175,"temp":34.7403,"event":""},{"t":213.0,"step":106,"areq":0.2186,"aact":0.2187,"temp":34.7749,"event":""},{"t":215.0,"step":107,"areq":0.2202,"aact":0.2199,"temp":34.7234,"event":""},{"t":217.0,"step":108,"areq":0.2218,"aact":0.2221,"temp":34.7829,"event":""},{"t":219.0,"step":109,"areq":0.2234,"aact":0.2236,"temp":34.7316,"event":""},{"t":221.0,"step":110,"areq":0.225,"aact":0.2252,"temp":34.758,"event":""},{"t":223.0,"step":111,"areq":0.2266,"aact":0.2262,"temp":34.7375,"event":""},{"t":225.0,"step":112,"areq":0.2282,"aact":0.2286,"temp":34.763,"event":""},{"t":227.0,"step":113,"areq":0.2298,"aact":0.23,"temp":34.7848,"event":""},{"t":229.0,"step":114,"areq":0.2314,"aact":0.2316,"temp":34.7699,"event":""},{"t":231.0,"step":115,"areq":0.233,"aact":0.2333,"temp":34.7868,"event":""},{"t":233.0,"step":116,"areq":0.2346,"aact":0.2349,"temp":34.7788,"event":""},{"t":235.0,"step":117,"areq":0.2362,"aact":0.2358,"temp":34.7619,"event":""},{"t":237.0,"step":118,"areq":0.2378,"aact":0.2377,"temp":34.809,"event":""},{"t":239.0,"step":119,"areq":0.2394,"aact":0.2394,"temp":34.8181,"event":""},{"t":241.0,"step":120,"areq":0.241,"aact":0.2416,"temp":34.7867,"event":""},{"t":243.0,"step":121,"areq":0.2426,"aact":0.2427,"temp":34.7682,"event":""},{"t":245.0,"step":122,"areq":0.2442,"aact":0.2449,"temp":34.82,"event":""},{"t":247.0,"step":123,"areq":0.2459,"aact":0.2446,"temp":34.7859,"event":""},{"t":249.0,"step":124,"areq":0.2475,"aact":0.2478,"temp":34.8215,"event":""},{"t":251.0,"step":125,"areq":0.2491,"aact":0.2486,"temp":34.8066,"event":""},{"t":253.0,"step":126,"areq":0.2507,"aact":0.2501,"temp":34.818,"event":""},{"t":255.0,"step":127,"areq":0.2523,"aact":0.2524,"temp":34.7839,"event":""},{"t":257.0,"step":128,"areq":0.2539,"aact":0.2536,"temp":34.8263,"event":""},{"t":259.0,"step":129,"areq":0.2555,"aact":0.2546,"temp":34.7964,"event":""},{"t":261.0,"step":130,"areq":0.2571,"aact":0.2576,"temp":34.8219,"event":""},{"t":263.0,"step":131,"areq":0.2587,"aact":0.2586,"temp":34.768,"event":""},{"t":265.0,"step":132,"areq":0.2603,"aact":0.2598,"temp":34.8138,"event":""},{"t":267.0,"step":133,"areq":0.2619,"aact":0.2615,"temp":34.8477,"event":""},{"t":269.0,"step":134,"areq":0.2635,"aact":0.2628,"temp":34.8213,"event":""},{"t":271.0,"step":135,"areq":0.2651,"aact":0.2642,"temp":34.8428,"event":""},{"t":273.0,"step":136,"areq":0.2667,"aact":0.2663,"temp":34.83,"event":""},{"t":275.0,"step":137,"areq":0.2683,"aact":0.2692,"temp":34.835,"event":""},{"t":277.0,"step":138,"areq":0.2699,"aact":0.2702,"temp":34.8271,"event":""},{"t":279.0,"step":139,"areq":0.2715,"aact":0.2712,"temp":34.8165,"event":""},{"t":281.0,"step":140,"areq":0.2731,"aact":0.2734,"temp":34.8395,"event":""},{"t":283.0,"step":141,"areq":0.2747,"aact":0.2738,"temp":34.8611,"event":""},{"t":285.0,"step":142,"areq":0.2764,"aact":0.2763,"temp":34.8637,"event":""},{"t":287.0,"step":143,"areq":0.278,"aact":0.2777,"temp":34.8519,"event":""},{"t":289.0,"step":144,"areq":0.2796,"aact":0.2796,"temp":34.8878,"event":""},{"t":291.0,"step":145,"areq":0.2812,"aact":0.2821,"temp":34.8956,"event":""},{"t":293.0,"step":146,"areq":0.2828,"aact":0.2818,"temp":34.88,"event":""},{"t":295.0,"step":147,"areq":0.2844,"aact":0.2841,"temp":34.8505,"event":""},{"t":297.0,"step":148,"areq":0.286,"aact":0.2861,"temp":34.9157,"event":""},{"t":299.0,"step":149,"areq":0.2876,"aact":0.2879,"temp":34.8809,"event":""},{"t":301.0,"step":150,"areq":0.2892,"aact":0.2889,"temp":34.861,"event":""},{"t":303.0,"step":151,"areq":0.2908,"aact":0.2904,"temp":34.89,"event":""},{"t":305.0,"step":152,"areq":0.2924,"aact":0.2925,"temp":34.8935,"event":""},{"t":307.0,"step":153,"areq":0.294,"aact":0.2946,"temp":34.9066,"event":""},{"t":309.0,"step":154,"areq":0.2956,"aact":0.2952,"temp":34.9047,"event":""},{"t":311.0,"step":155,"areq":0.2972,"aact":0.2978,"temp":34.9427,"event":""},{"t":313.0,"step":156,"areq":0.2988,"aact":0.2989,"temp":34.9545,"event":""},{"t":315.0,"step":157,"areq":0.3004,"aact":0.3009,"temp":34.9394,"event":""},{"t":317.0,"step":158,"areq":0.302,"aact":0.3021,"temp":34.9373,"event":""},{"t":319.0,"step":159,"areq":0.3036,"aact":0.3037,"temp":34.9406,"event":""},{"t":321.0,"step":160,"areq":0.3053,"aact":0.3061,"temp":34.9335,"event":""},{"t":323.0,"step":161,"areq":0.3069,"aact":0.3075,"temp":34.9647,"event":""},{"t":325.0,"step":162,"areq":0.3085,"aact":0.3078,"temp":34.9489,"event":""},{"t":327.0,"step":163,"areq":0.3101,"aact":0.3103,"temp":34.9325,"event":""},{"t":329.0,"step":164,"areq":0.3117,"aact":0.3115,"temp":34.9396,"event":""},{"t":331.0,"step":165,"areq":0.3133,"aact":0.3135,"temp":34.9613,"event":""},{"t":333.0,"step":166,"areq":0.3149,"aact":0.3146,"temp":34.9837,"event":""},{"t":335.0,"step":167,"areq":0.3165,"aact":0.3154,"temp":34.9946,"event":""},{"t":337.0,"step":168,"areq":0.3181,"aact":0.3182,"temp":34.9731,"event":""},{"t":339.0,"step":169,"areq":0.3197,"aact":0.3203,"temp":34.9863,"event":""},{"t":341.0,"step":170,"areq":0.3213,"aact":0.322,"temp":34.9473,"event":""},{"t":343.0,"step":171,"areq":0.3229,"aact":0.323,"temp":34.9836,"event":""},{"t":345.0,"step":172,"areq":0.3245,"aact":0.3246,"temp":34.9958,"event":""},{"t":347.0,"step":173,"areq":0.3261,"aact":0.3256,"temp":34.9623,"event":""},{"t":349.0,"step":174,"areq":0.3277,"aact":0.3265,"temp":34.9638,"event":""},{"t":351.0,"step":175,"areq":0.3293,"aact":0.3307,"temp":35.0246,"event":""},{"t":353.0,"step":176,"areq":0.3309,"aact":0.3302,"temp":34.9963,"event":""},{"t":355.0,"step":177,"areq":0.3325,"aact":0.3321,"temp":35.0333,"event":""},{"t":357.0,"step":178,"areq":0.3341,"aact":0.3333,"temp":35.0352,"event":""},{"t":359.0,"step":179,"areq":0.3358,"aact":0.3355,"temp":34.9936,"event":""},{"t":361.0,"step":180,"areq":0.3374,"aact":0.3382,"temp":35.0677,"event":""},{"t":363.0,"step":181,"areq":0.339,"aact":0.3392,"temp":35.0391,"event":""},{"t":365.0,"step":182,"areq":0.3406,"aact":0.3392,"temp":35.0832,"event":""},{"t":367.0,"step":183,"areq":0.3422,"aact":0.3418,"temp":35.0497,"event":""},{"t":369.0,"step":184,"areq":0.3438,"aact":0.3439,"temp":35.048,"event":""},{"t":371.0,"step":185,"areq":0.3454,"aact":0.3455,"temp":35.048,"event":""},{"t":373.0,"step":186,"areq":0.347,"aact":0.3469,"temp":35.0439,"event":""},{"t":375.0,"step":187,"areq":0.3486,"aact":0.3491,"temp":35.0293,"event":""},{"t":377.0,"step":188,"areq":0.3502,"aact":0.3502,"temp":35.0968,"event":""},{"t":379.0,"step":189,"areq":0.3518,"aact":0.3522,"temp":35.0274,"event":""},{"t":381.0,"step":190,"areq":0.3534,"aact":0.3529,"temp":35.0637,"event":""},{"t":383.0,"step":191,"areq":0.355,"aact":0.3556,"temp":35.0599,"event":""},{"t":385.0,"step":192,"areq":0.3566,"aact":0.3569,"temp":35.0775,"event":""},{"t":387.0,"step":193,"areq":0.3582,"aact":0.3579,"temp":35.096,"event":""},{"t":389.0,"step":194,"areq":0.3598,"aact":0.3611,"temp":35.1124,"event":""},{"t":391.0,"step":195,"areq":0.3614,"aact":0.3612,"temp":35.1255,"event":""},{"t":393.0,"step":196,"areq":0.363,"aact":0.3621,"temp":35.1129,"event":""},{"t":395.0,"step":197,"areq":0.3646,"aact":0.3643,"temp":35.1343,"event":""},{"t":397.0,"step":198,"areq":0.3663,"aact":0.3646,"temp":35.1294,"event":""},{"t":399.0,"step":199,"areq":0.3679,"aact":0.3685,"temp":35.0874,"event":""},{"t":401.0,"step":200,"areq":0.3695,"aact":0.37,"temp":35.1529,"event":""},{"t":403.0,"step":201,"areq":0.3711,"aact":0.3713,"temp":35.1097,"event":""},{"t":405.0,"step":202,"areq":0.3727,"aact":0.3737,"temp":35.1354,"event":""},{"t":407.0,"step":203,"areq":0.3743,"aact":0.3752,"temp":35.148,"event":""},{"t":409.0,"step":204,"areq":0.3759,"aact":0.3755,"temp":35.133,"event":""},{"t":411.0,"step":205,"areq":0.3775,"aact":0.3764,"temp":35.1794,"event":""},{"t":413.0,"step":206,"areq":0.3791,"aact":0.3785,"temp":35.1635,"event":""},{"t":415.0,"step":207,"areq":0.3807,"aact":0.3801,"temp":35.1555,"event":""},{"t":417.0,"step":208,"areq":0.3823,"aact":0.3829,"temp":35.1561,"event":""},{"t":419.0,"step":209,"areq":0.3839,"aact":0.3846,"temp":35.1876,"event":""},{"t":421.0,"step":210,"areq":0.3855,"aact":0.3852,"temp":35.2319,"event":""},{"t":423.0,"step":211,"areq":0.3871,"aact":0.3877,"temp":35.1833,"event":""},{"t":425.0,"step":212,"areq":0.3887,"aact":0.39,"temp":35.1901,"event":""},{"t":427.0,"step":213,"areq":0.3903,"aact":0.3909,"temp":35.2079,"event":""},{"t":429.0,"step":214,"areq":0.3919,"aact":0.392,"temp":35.1901,"event":""},{"t":431.0,"step":215,"areq":0.3935,"aact":0.3946,"temp":35.1958,"event":""},{"t":433.0,"step":216,"areq":0.3952,"aact":0.3957,"temp":35.2079,"event":""},{"t":435.0,"step":217,"areq":0.3968,"aact":0.3967,"temp":35.2297,"event":""},{"t":437.0,"step":218,"areq":0.3984,"aact":0.3993,"temp":35.216,"event":""},{"t":439.0,"step":219,"areq":0.4,"aact":0.399,"temp":35.2325,"event":""},{"t":441.0,"step":220,"areq":0.4016,"aact":0.4024,"temp":35.2046,"event":""},{"t":443.0,"step":221,"areq":0.4032,"aact":0.4029,"temp":35.2715,"event":""},{"t":445.0,"step":222,"areq":0.4048,"aact":0.4027,"temp":35.2448,"event":""},{"t":447.0,"step":223,"areq":0.4064,"aact":0.4077,"temp":35.2668,"event":""},{"t":449.0,"step":224,"areq":0.408,"aact":0.4064,"temp":35.3011,"event":""},{"t":451.0,"step":225,"areq":0.4096,"aact":0.4111,"temp":35.2532,"event":""},{"t":453.0,"step":226,"areq":0.4112,"aact":0.4098,"temp":35.2943,"event":""},{"t":455.0,"step":227,"areq":0.4128,"aact":0.412,"temp":35.2948,"event":""},{"t":457.0,"step":228,"areq":0.4144,"aact":0.4139,"temp":35.3153,"event":""},{"t":459.0,"step":229,"areq":0.416,"aact":0.4159,"temp":35.3446,"event":""},{"t":461.0,"step":230,"areq":0.4176,"aact":0.4183,"temp":35.3113,"event":""},{"t":463.0,"step":231,"areq":0.4192,"aact":0.4189,"temp":35.298,"event":""},{"t":465.0,"step":232,"areq":0.4208,"aact":0.4206,"temp":35.3015,"event":""},{"t":467.0,"step":233,"areq":0.4224,"aact":0.4228,"temp":35.3364,"event":""},{"t":469.0,"step":234,"areq":0.424,"aact":0.4247,"temp":35.3396,"event":""},{"t":471.0,"step":235,"areq":0.4257,"aact":0.4245,"temp":35.3626,"event":""},{"t":473.0,"step":236,"areq":0.4273,"aact":0.4251,"temp":35.3073,"event":""},{"t":475.0,"step":237,"areq":0.4289,"aact":0.4277,"temp":35.3963,"event":""},{"t":477.0,"step":238,"areq":0.4305,"aact":0.4296,"temp":35.3563,"event":""},{"t":479.0,"step":239,"areq":0.4321,"aact":0.432,"temp":35.3858,"event":""},{"t":481.0,"step":240,"areq":0.4337,"aact":0.4346,"temp":35.349,"event":""},{"t":483.0,"step":241,"areq":0.4353,"aact":0.4343,"temp":35.402,"event":""},{"t":485.0,"step":242,"areq":0.4369,"aact":0.4372,"temp":35.3841,"event":""},{"t":487.0,"step":243,"areq":0.4385,"aact":0.437,"temp":35.4248,"event":""},{"t":489.0,"step":244,"areq":0.4401,"aact":0.4385,"temp":35.424,"event":""},{"t":491.0,"step":245,"areq":0.4417,"aact":0.4398,"temp":35.4118,"event":""},{"t":493.0,"step":246,"areq":0.4433,"aact":0.4433,"temp":35.3985,"event":""},{"t":495.0,"step":247,"areq":0.4449,"aact":0.4462,"temp":35.4214,"event":""},{"t":497.0,"step":248,"areq":0.4465,"aact":0.4464,"temp":35.4551,"event":""},{"t":499.0,"step":249,"areq":0.4481,"aact":0.4485,"temp":35.4251,"event":""},{"t":501.0,"step":250,"areq":0.4497,"aact":0.4493,"temp":35.4496,"event":""},{"t":503.0,"step":251,"areq":0.4513,"aact":0.4495,"temp":35.4216,"event":""},{"t":505.0,"step":252,"areq":0.4529,"aact":0.4535,"temp":35.4746,"event":""},{"t":507.0,"step":253,"areq":0.4545,"aact":0.4545,"temp":35.4788,"event":""},{"t":509.0,"step":254,"areq":0.4562,"aact":0.4555,"temp":35.4952,"event":""},{"t":511.0,"step":255,"areq":0.4578,"aact":0.4574,"temp":35.4558,"event":""},{"t":513.0,"step":256,"areq":0.4594,"aact":0.4589,"temp":35.4594,"event":""},{"t":515.0,"step":257,"areq":0.461,"aact":0.4605,"temp":35.5146,"event":""},{"t":517.0,"step":258,"areq":0.4626,"aact":0.463,"temp":35.5123,"event":""},{"t":519.0,"step":259,"areq":0.4642,"aact":0.4638,"temp":35.4829,"event":""},{"t":521.0,"step":260,"areq":0.4658,"aact":0.4661,"temp":35.5394,"event":""},{"t":523.0,"step":261,"areq":0.4674,"aact":0.4676,"temp":35.5221,"event":""},{"t":525.0,"step":262,"areq":0.469,"aact":0.4696,"temp":35.5365,"event":""},{"t":527.0,"step":263,"areq":0.4706,"aact":0.4699,"temp":35.5593,"event":""},{"t":529.0,"step":264,"areq":0.4722,"aact":0.4719,"temp":35.5535,"event":""},{"t":531.0,"step":265,"areq":0.4738,"aact":0.4737,"temp":35.5459,"event":""},{"t":533.0,"step":266,"areq":0.4754,"aact":0.4761,"temp":35.5691,"event":""},{"t":535.0,"step":267,"areq":0.477,"aact":0.4775,"temp":35.5681,"event":""},{"t":537.0,"step":268,"areq":0.4786,"aact":0.4782,"temp":35.562,"event":""},{"t":539.0,"step":269,"areq":0.4802,"aact":0.4794,"temp":35.5792,"event":""},{"t":541.0,"step":270,"areq":0.4818,"aact":0.4823,"temp":35.5613,"event":""},{"t":543.0,"step":271,"areq":0.4834,"aact":0.4841,"temp":35.5811,"event":""},{"t":545.0,"step":272,"areq":0.4851,"aact":0.4838,"temp":35.599,"event":""},{"t":547.0,"step":273,"areq":0.4867,"aact":0.4877,"temp":35.5941,"event":""},{"t":549.0,"step":274,"areq":0.4883,"aact":0.4876,"temp":35.618,"event":""},{"t":551.0,"step":275,"areq":0.4899,"aact":0.4891,"temp":35.6219,"event":""},{"t":553.0,"step":276,"areq":0.4915,"aact":0.4905,"temp":35.6373,"event":""},{"t":555.0,"step":277,"areq":0.4931,"aact":0.4924,"temp":35.6209,"event":""},{"t":557.0,"step":278,"areq":0.4947,"aact":0.4944,"temp":35.6194,"event":""},{"t":559.0,"step":279,"areq":0.4963,"aact":0.496,"temp":35.6465,"event":""},{"t":561.0,"step":280,"areq":0.4979,"aact":0.4984,"temp":35.6553,"event":""},{"t":563.0,"step":281,"areq":0.4995,"aact":0.4984,"temp":35.7087,"event":""},{"t":565.0,"step":282,"areq":0.5011,"aact":0.5003,"temp":35.6951,"event":""},{"t":567.0,"step":283,"areq":0.5027,"aact":0.5025,"temp":35.7179,"event":""},{"t":569.0,"step":284,"areq":0.5043,"aact":0.5068,"temp":35.6989,"event":""},{"t":571.0,"step":285,"areq":0.5059,"aact":0.505,"temp":35.7219,"event":""},{"t":573.0,"step":286,"areq":0.5075,"aact":0.5078,"temp":35.6857,"event":""},{"t":575.0,"step":287,"areq":0.5091,"aact":0.5079,"temp":35.7351,"event":""},{"t":577.0,"step":288,"areq":0.5107,"aact":0.5123,"temp":35.7355,"event":""},{"t":579.0,"step":289,"areq":0.5123,"aact":0.5128,"temp":35.7433,"event":""},{"t":581.0,"step":290,"areq":0.5139,"aact":0.5135,"temp":35.8012,"event":""},{"t":583.0,"step":291,"areq":0.5156,"aact":0.5161,"temp":35.7174,"event":""},{"t":585.0,"step":292,"areq":0.5172,"aact":0.5172,"temp":35.7863,"event":""},{"t":587.0,"step":293,"areq":0.5188,"aact":0.5191,"temp":35.7249,"event":""},{"t":589.0,"step":294,"areq":0.5204,"aact":0.5195,"temp":35.8011,"event":""},{"t":591.0,"step":295,"areq":0.522,"aact":0.523,"temp":35.7925,"event":""},{"t":593.0,"step":296,"areq":0.5236,"aact":0.524,"temp":35.7737,"event":""},{"t":595.0,"step":297,"areq":0.5252,"aact":0.5248,"temp":35.8009,"event":""},{"t":597.0,"step":298,"areq":0.5268,"aact":0.5275,"temp":35.8354,"event":""},{"t":599.0,"step":299,"areq":0.5284,"aact":0.5277,"temp":35.7657,"event":""},{"t":601.0,"step":300,"areq":0.53,"aact":0.5285,"temp":35.8522,"event":""}],"water_fault":[{"t":1.0,"step":0,"areq":0.05,"aact":0.0437,"temp":34.6291,"event":"feedbacks enabled"},{"t":3.0,"step":1,"areq":0.05,"aact":0.0498,"temp":34.601,"event":""},{"t":5.0,"step":2,"areq":0.0516,"aact":0.0516,"temp":34.6034,"event":""},{"t":7.0,"step":3,"areq":0.0532,"aact":0.0532,"temp":34.5997,"event":""},{"t":9.0,"step":4,"areq":0.0548,"aact":0.0548,"temp":34.6492,"event":""},{"t":11.0,"step":5,"areq":0.0564,"aact":0.0565,"temp":34.6057,"event":""},{"t":13.0,"step":6,"areq":0.058,"aact":0.058,"temp":34.6226,"event":""},{"t":15.0,"step":7,"areq":0.0596,"aact":0.0595,"temp":34.6114,"event":""},{"t":17.0,"step":8,"areq":0.0612,"aact":0.0612,"temp":34.6247,"event":""},{"t":19.0,"step":9,"areq":0.0628,"aact":0.0629,"temp":34.5816,"event":""},{"t":21.0,"step":10,"areq":0.0644,"aact":0.0647,"temp":34.6019,"event":""},{"t":23.0,"step":11,"areq":0.0661,"aact":0.066,"temp":34.5732,"event":""},{"t":25.0,"step":12,"areq":0.0677,"aact":0.0677,"temp":34.5786,"event":""},{"t":27.0,"step":13,"areq":0.0693,"aact":0.0694,"temp":34.5792,"event":""},{"t":29.0,"step":14,"areq":0.0709,"aact":0.071,"temp":34.6089,"event":""},{"t":31.0,"step":15,"areq":0.0725,"aact":0.0725,"temp":34.6286,"event":""},{"t":33.0,"step":16,"areq":0.0741,"aact":0.0739,"temp":34.622,"event":""},{"t":35.0,"step":17,"areq":0.0757,"aact":0.0755,"temp":34.6047,"event":""},{"t":37.0,"step":18,"areq":0.0773,"aact":0.0775,"temp":34.6164,"event":""},{"t":39.0,"step":19,"areq":0.0789,"aact":0.0788,"temp":34.6161,"event":""},{"t":41.0,"step":20,"areq":0.0805,"aact":0.0805,"temp":34.5845,"event":""},{"t":43.0,"step":21,"areq":0.0821,"aact":0.0817,"temp":34.6055,"event":""},{"t":45.0,"step":22,"areq":0.0837,"aact":0.0837,"temp":34.6355,"event":""},{"t":47.0,"step":23,"areq":0.0853,"aact":0.0854,"temp":34.5749,"event":""},{"t":49.0,"step":24,"areq":0.0869,"aact":0.087,"temp":34.5893,"event":""},{"t":51.0,"step":25,"areq":0.0885,"aact":0.0888,"temp":34.6265,"event":""},{"t":53.0,"step":26,"areq":0.0901,"aact":0.0899,"temp":34.6126,"event":""},{"t":55.0,"step":27,"areq":0.0917,"aact":0.0915,"temp":34.6073,"event":""},{"t":57.0,"step":28,"areq":0.0933,"aact":0.0935,"temp":34.6173,"event":""},{"t":59.0,"step":29,"areq":0.0949,"aact":0.0951,"temp":34.5882,"event":""},{"t":61.0,"step":30,"areq":0.0966,"aact":0.0965,"temp":34.6548,"event":""},{"t":63.0,"step":31,"areq":0.0982,"aact":0.0982,"temp":34.6176,"event":""},{"t":65.0,"step":32,"areq":0.0998,"aact":0.1,"temp":34.6359,"event":""},{"t":67.0,"step":33,"areq":0.1014,"aact":0.1015,"temp":34.6396,"event":""},{"t":69.0,"step":34,"areq":0.103,"aact":0.1029,"temp":34.5985,"event":""},{"t":71.0,"step":35,"areq":0.1046,"aact":0.1048,"temp":34.6238,"event":""},{"t":73.0,"step":36,"areq":0.1062,"aact":0.1065,"temp":34.6489,"event":""},{"t":75.0,"step":37,"areq":0.1078,"aact":0.1075,"temp":34.6,"event":""},{"t":77.0,"step":38,"areq":0.1094,"aact":0.1096,"temp":34.6491,"event":""},{"t":79.0,"step":39,"areq":0.111,"aact":0.1109,"temp":34.6022,"event":""},{"t":81.0,"step":40,"areq":0.1126,"aact":0.1127,"temp":34.6027,"event":""},{"t":83.0,"step":41,"areq":0.1142,"aact":0.114,"temp":34.6429,"event":""},{"t":85.0,"step":42,"areq":0.1158,"aact":0.116,"temp":34.634,"event":""},{"t":87.0,"step":43,"areq":0.1174,"aact":0.1172,"temp":34.6661,"event":""},{"t":89.0,"step":44,"areq":0.119,"aact":0.119,"temp":34.6094,"event":""},{"t":91.0,"step":45,"areq":0.1206,"aact":0.1207,"temp":34.6275,"event":""},{"t":93.0,"step":46,"areq":0.1222,"aact":0.1221,"temp":34.6272,"event":""},{"t":95.0,"step":47,"areq":0.1238,"aact":0.1237,"temp":34.6108,"event":""},{"t":97.0,"step":48,"areq":0.1255,"aact":0.1255,"temp":34.6637,"event":""},{"t":99.0,"step":49,"areq":0.1271,"aact":0.1273,"temp":34.6542,"event":""},{"t":101.0,"step":50,"areq":0.1287,"aact":0.1284,"temp":34.6735,"event":""},{"t":103.0,"step":51,"areq":0.1303,"aact":0.1303,"temp":34.6557,"event":""},{"t":105.0,"step":52,"areq":0.1319,"aact":0.1318,"temp":34.6518,"event":""},{"t":107.0,"step":53,"areq":0.1335,"aact":0.1337,"temp":34.6338,"event":""},{"t":109.0,"step":54,"areq":0.1351,"aact":0.1343,"temp":34.6484,"event":""},{"t":111.0,"step":55,"areq":0.1367,"aact":0.1368,"temp":34.6503,"event":""},{"t":113.0,"step":56,"areq":0.1383,"aact":0.1383,"temp":34.6185,"event":""},{"t":115.0,"step":57,"areq":0.1399,"aact":0.1398,"temp":34.661,"event":""},{"t":117.0,"step":58,"areq":0.1415,"aact":0.1421,"temp":34.6366,"event":""},{"t":119.0,"step":59,"areq":0.1431,"aact":0.1432,"temp":34.6534,"event":""},{"t":121.0,"step":60,"areq":0.1447,"aact":0.1448,"temp":34.615,"event":""},{"t":123.0,"step":61,"areq":0.1463,"aact":0.1464,"temp":34.6339,"event":""},{"t":125.0,"step":62,"areq":0.1479,"aact":0.1481,"temp":34.6623,"event":""},{"t":127.0,"step":63,"areq":0.1495,"aact":0.1498,"temp":34.6461,"event":""},{"t":129.0,"step":64,"areq":0.1511,"aact":0.1511,"temp":34.655,"event":""},{"t":131.0,"step":65,"areq":0.1527,"aact":0.1532,"temp":34.6869,"event":""},{"t":133.0,"step":66,"areq":0.1543,"aact":0.1547,"temp":34.6595,"event":""},{"t":135.0,"step":67,"areq":0.156,"aact":0.156,"temp":34.6957,"event":""},{"t":137.0,"step":68,"areq":0.1576,"aact":0.1569,"temp":34.7012,"event":""},{"t":139.0,"step":69,"areq":0.1592,"aact":0.1591,"temp":34.689,"event":""},{"t":141.0,"step":70,"areq":0.1608,"aact":0.1608,"temp":34.6687,"event":""},{"t":143.0,"step":71,"areq":0.1624,"aact":0.1621,"temp":34.6573,"event":""},{"t":145.0,"step":72,"areq":0.164,"aact":0.1647,"temp":34.6442,"event":""},{"t":147.0,"step":73,"areq":0.1656,"aact":0.1657,"temp":34.7006,"event":""},{"t":149.0,"step":74,"areq":0.1672,"aact":0.167,"temp":34.6481,"event":""},{"t":151.0,"step":75,"areq":0.1688,"aact":0.1687,"temp":34.6913,"event":""},{"t":153.0,"step":76,"areq":0.1704,"aact":0.1708,"temp":34.6769,"event":""},{"t":155.0,"step":77,"areq":0.172,"aact":0.1723,"temp":34.6739,"event":""},{"t":157.0,"step":78,"areq":0.1736,"aact":0.1733,"temp":34.7185,"event":""},{"t":159.0,"step":79,"areq":0.1752,"aact":0.175,"temp":34.7067,"event":""},{"t":161.0,"step":80,"areq":0.1768,"aact":0.1768,"temp":34.6912,"event":""},{"t":163.0,"step":81,"areq":0.1784,"aact":0.1783,"temp":34.6868,"event":""},{"t":165.0,"step":82,"areq":0.18,"aact":0.1799,"temp":34.7256,"event":""},{"t":167.0,"step":83,"areq":0.1816,"aact":0.1819,"temp":34.7129,"event":""},{"t":169.0,"step":84,"areq":0.1832,"aact":0.1834,"temp":34.6917,"event":""},{"t":171.0,"step":85,"areq":0.1848,"aact":0.185,"temp":34.6819,"event":""},{"t":173.0,"step":86,"areq":0.1865,"aact":0.1867,"temp":34.6918,"event":""},{"t":175.0,"step":87,"areq":0.1881,"aact":0.1881,"temp":34.6994,"event":""},{"t":177.0,"step":88,"areq":0.1897,"aact":0.1899,"temp":34.6632,"event":""},{"t":179.0,"step":89,"areq":0.1913,"aact":0.1912,"temp":34.695,"event":""},{"t":181.0,"step":90,"areq":0.1929,"aact":0.1927,"temp":34.68,"event":""},{"t":183.0,"step":91,"areq":0.1945,"aact":0.1952,"temp":34.703,"event":""},{"t":185.0,"step":92,"areq":0.1961,"aact":0.1963,"temp":34.696,"event":""},{"t":187.0,"step":93,"areq":0.1977,"aact":0.1977,"temp":34.7205,"event":""},{"t":189.0,"step":94,"areq":0.1993,"aact":0.1991,"temp":34.7154,"event":""},{"t":191.0,"step":95,"areq":0.2009,"aact":0.2011,"temp":34.7318,"event":""},{"t":193.0,"step":96,"areq":0.2025,"aact":0.202,"temp":34.7394,"event":""},{"t":195.0,"step":97,"areq":0.2041,"aact":0.2036,"temp":34.7216,"event":""},{"t":197.0,"step":98,"areq":0.2057,"aact":0.2054,"temp":34.6985,"event":""},{"t":199.0,"step":99,"areq":0.2073,"aact":0.207,"temp":34.7328,"event":""},{"t":201.0,"step":100,"areq":0.2089,"aact":0.2097,"temp":34.7088,"event":""},{"t":203.0,"step":101,"areq":0.2105,"aact":0.2107,"temp":34.7384,"event":""},{"t":205.0,"step":102,"areq":0.2121,"aact":0.2125,"temp":34.7674,"event":""},{"t":207.0,"step":103,"areq":0.2137,"aact":0.2134,"temp":34.705,"event":""},{"t":209.0,"step":104,"areq":0.2154,"aact":0.2153,"temp":34.7173,"event":""},{"t":211.0,"step":105,"areq":0.217,"aact":0.2175,"temp":34.7403,"event":""},{"t":213.0,"step":106,"areq":0.2186,"aact":0.2187,"temp":34.7749,"event":""},{"t":215.0,"step":107,"areq":0.2202,"aact":0.2199,"temp":34.7234,"event":""},{"t":217.0,"step":108,"areq":0.2218,"aact":0.2221,"temp":34.7829,"event":""},{"t":219.0,"step":109,"areq":0.2234,"aact":0.2236,"temp":34.7316,"event":""},{"t":221.0,"step":110,"areq":0.225,"aact":0.2252,"temp":34.758,"event":""},{"t":223.0,"step":111,"areq":0.2266,"aact":0.2262,"temp":34.7375,"event":""},{"t":225.0,"step":112,"areq":0.2282,"aact":0.2286,"temp":34.763,"event":""},{"t":227.0,"step":113,"areq":0.2298,"aact":0.23,"temp":34.7848,"event":""},{"t":229.0,"step":114,"areq":0.2314,"aact":0.2316,"temp":34.7699,"event":""},{"t":231.0,"step":115,"areq":0.233,"aact":0.2333,"temp":34.7868,"event":""},{"t":233.0,"step":116,"areq":0.2346,"aact":0.2349,"temp":34.7788,"event":""},{"t":235.0,"step":117,"areq":0.2362,"aact":0.2358,"temp":34.7619,"event":""},{"t":237.0,"step":118,"areq":0.2378,"aact":0.2377,"temp":34.809,"event":""},{"t":239.0,"step":119,"areq":0.2394,"aact":0.2394,"temp":34.8181,"event":""},{"t":241.0,"step":120,"areq":0.241,"aact":0.2416,"temp":34.7867,"event":""},{"t":243.0,"step":121,"areq":0.2426,"aact":0.2427,"temp":34.7682,"event":""},{"t":245.0,"step":122,"areq":0.2442,"aact":0.2449,"temp":34.82,"event":""},{"t":247.0,"step":123,"areq":0.2459,"aact":0.2446,"temp":34.7859,"event":""},{"t":249.0,"step":124,"areq":0.2475,"aact":0.2478,"temp":34.8215,"event":""},{"t":251.0,"step":125,"areq":0.2491,"aact":0.2486,"temp":34.8066,"event":""},{"t":253.0,"step":126,"areq":0.2507,"aact":0.2501,"temp":34.818,"event":""},{"t":255.0,"step":127,"areq":0.2523,"aact":0.2524,"temp":34.7839,"event":""},{"t":257.0,"step":128,"areq":0.2539,"aact":0.2536,"temp":34.8263,"event":""},{"t":259.0,"step":129,"areq":0.2555,"aact":0.2546,"temp":34.7964,"event":""},{"t":261.0,"step":130,"areq":0.2571,"aact":0.2576,"temp":34.8219,"event":""},{"t":263.0,"step":131,"areq":0.2587,"aact":0.2586,"temp":34.768,"event":""},{"t":265.0,"step":132,"areq":0.2603,"aact":0.2598,"temp":34.8138,"event":""},{"t":267.0,"step":133,"areq":0.2619,"aact":0.2615,"temp":34.8477,"event":""},{"t":269.0,"step":134,"areq":0.2635,"aact":0.2628,"temp":34.8213,"event":""},{"t":271.0,"step":135,"areq":0.2651,"aact":0.2642,"temp":34.8428,"event":""},{"t":273.0,"step":136,"areq":0.2667,"aact":0.2663,"temp":34.83,"event":""},{"t":275.0,"step":137,"areq":0.2683,"aact":0.2692,"temp":34.835,"event":""},{"t":277.0,"step":138,"areq":0.2699,"aact":0.2702,"temp":34.8271,"event":""},{"t":279.0,"step":139,"areq":0.2715,"aact":0.2712,"temp":34.8165,"event":""},{"t":281.0,"step":140,"areq":0.2731,"aact":0.2734,"temp":34.8395,"event":""},{"t":283.0,"step":141,"areq":0.2747,"aact":0.2738,"temp":34.8611,"event":""},{"t":285.0,"step":142,"areq":0.2764,"aact":0.2763,"temp":34.8637,"event":""},{"t":287.0,"step":143,"areq":0.278,"aact":0.2777,"temp":34.8519,"event":""},{"t":289.0,"step":144,"areq":0.2796,"aact":0.2796,"temp":34.8878,"event":""},{"t":291.0,"step":145,"areq":0.2812,"aact":0.2821,"temp":34.8956,"event":""},{"t":293.0,"step":146,"areq":0.2828,"aact":0.2818,"temp":34.88,"event":""},{"t":295.0,"step":147,"areq":0.2844,"aact":0.2841,"temp":34.8505,"event":""},{"t":297.0,"step":148,"areq":0.286,"aact":0.2861,"temp":34.9157,"event":""},{"t":299.0,"step":149,"areq":0.2876,"aact":0.2879,"temp":34.8809,"event":""},{"t":301.0,"step":150,"areq":0.2892,"aact":0.2889,"temp":34.8909,"event":""},{"t":303.0,"step":151,"areq":0.2908,"aact":0.2904,"temp":34.9852,"event":""},{"t":305.0,"step":152,"areq":0.2924,"aact":0.2925,"temp":35.0526,"event":""},{"t":307.0,"step":153,"areq":0.294,"aact":0.2946,"temp":35.1282,"event":""},{"t":309.0,"step":154,"areq":0.2956,"aact":0.2952,"temp":35.1874,"event":""},{"t":311.0,"step":155,"areq":0.2972,"aact":0.2978,"temp":35.2851,"event":""},{"t":313.0,"step":156,"areq":0.2988,"aact":0.2989,"temp":35.3553,"event":""},{"t":315.0,"step":157,"areq":0.3004,"aact":0.3009,"temp":35.3973,"event":""},{"t":317.0,"step":158,"areq":0.302,"aact":0.3021,"temp":35.4512,"event":""},{"t":319.0,"step":159,"areq":0.3036,"aact":0.3037,"temp":35.5091,"event":""},{"t":321.0,"step":160,"areq":0.3053,"aact":0.3061,"temp":35.5555,"event":""},{"t":323.0,"step":161,"areq":0.3069,"aact":0.3075,"temp":35.639,"event":""},{"t":325.0,"step":162,"areq":0.3085,"aact":0.3078,"temp":35.6743,"event":""},{"t":327.0,"step":163,"areq":0.3101,"aact":0.3103,"temp":35.7079,"event":""},{"t":329.0,"step":164,"areq":0.3117,"aact":0.3115,"temp":35.7639,"event":""},{"t":331.0,"step":165,"areq":0.3133,"aact":0.3135,"temp":35.8335,"event":""},{"t":333.0,"step":166,"areq":0.3149,"aact":0.3146,"temp":35.9027,"event":""},{"t":335.0,"step":167,"areq":0.3165,"aact":0.3154,"temp":35.9594,"event":""},{"t":337.0,"step":168,"areq":0.3181,"aact":0.3182,"temp":35.9826,"event":""},{"t":339.0,"step":169,"areq":0.3197,"aact":0.3203,"temp":36.0396,"event":""},{"t":341.0,"step":170,"areq":0.3213,"aact":0.322,"temp":36.0434,"event":""},{"t":343.0,"step":171,"areq":0.3229,"aact":0.323,"temp":36.1216,"event":""},{"t":345.0,"step":172,"areq":0.3245,"aact":0.3246,"temp":36.1747,"event":""},{"t":347.0,"step":173,"areq":0.3261,"aact":0.3256,"temp":36.1812,"event":""},{"t":349.0,"step":174,"areq":0.3277,"aact":0.3265,"temp":36.2219,"event":""},{"t":351.0,"step":175,"areq":0.3293,"aact":0.3307,"temp":36.321,"event":""},{"t":353.0,"step":176,"areq":0.3309,"aact":0.3302,"temp":36.3302,"event":""},{"t":355.0,"step":177,"areq":0.3325,"aact":0.3321,"temp":36.4038,"event":""},{"t":357.0,"step":178,"areq":0.3341,"aact":0.3333,"temp":36.4415,"event":""},{"t":359.0,"step":179,"areq":0.3358,"aact":0.3355,"temp":36.435,"event":""},{"t":361.0,"step":180,"areq":0.3374,"aact":0.3382,"temp":36.5434,"event":""},{"t":363.0,"step":181,"areq":0.339,"aact":0.3392,"temp":36.5482,"event":""},{"t":365.0,"step":182,"areq":0.3406,"aact":0.3392,"temp":36.6252,"event":""},{"t":367.0,"step":183,"areq":0.3422,"aact":0.3418,"temp":36.6237,"event":""},{"t":369.0,"step":184,"areq":0.3438,"aact":0.3439,"temp":36.6534,"event":""},{"t":371.0,"step":185,"areq":0.3454,"aact":0.3455,"temp":36.684,"event":""},{"t":373.0,"step":186,"areq":0.347,"aact":0.3469,"temp":36.7099,"event":""},{"t":375.0,"step":187,"areq":0.3486,"aact":0.3491,"temp":36.7246,"event":""},{"t":377.0,"step":188,"areq":0.3502,"aact":0.3502,"temp":36.8208,"event":""},{"t":379.0,"step":189,"areq":0.3518,"aact":0.3522,"temp":36.7796,"event":""},{"t":381.0,"step":190,"areq":0.3534,"aact":0.3529,"temp":36.8432,"event":""},{"t":383.0,"step":191,"areq":0.355,"aact":0.3556,"temp":36.8663,"event":""},{"t":385.0,"step":192,"areq":0.3566,"aact":0.3569,"temp":36.9101,"event":""},{"t":387.0,"step":193,"areq":0.3582,"aact":0.3579,"temp":36.9543,"event":""},{"t":389.0,"step":194,"areq":0.3598,"aact":0.3611,"temp":36.9958,"event":""},{"t":391.0,"step":195,"areq":0.3614,"aact":0.3612,"temp":37.0335,"event":""},{"t":391.0,"step":196,"areq":0.3614,"aact":0.3625,"temp":36.9912,"event":"temperature 37.00 C out of range, waiting"},{"t":393.0,"step":196,"areq":0.3614,"aact":0.3624,"temp":37.0806,"event":"temperature 37.04 C out of range, waiting"},{"t":395.0,"step":196,"areq":0.3614,"aact":0.362,"temp":37.1241,"event":"temperature 37.07 C out of range, waiting"},{"t":397.0,"step":196,"areq":0.3614,"aact":0.3599,"temp":37.1071,"event":"temperature 37.12 C out of range, waiting"},{"t":399.0,"step":196,"areq":0.3614,"aact":0.3606,"temp":37.147,"event":"temperature 37.18 C out of range, waiting"},{"t":401.0,"step":196,"areq":0.3614,"aact":0.3626,"temp":37.1386,"event":"temperature 37.11 C out of range, waiting"},{"t":403.0,"step":196,"areq":0.3614,"aact":0.3621,"temp":37.126,"event":"temperature 37.20 C out of range, waiting"},{"t":405.0,"step":196,"areq":0.3614,"aact":0.3617,"temp":37.1768,"event":"temperature 37.18 C out of range, waiting"},{"t":407.0,"step":196,"areq":0.3614,"aact":0.3608,"temp":37.2591,"event":"temperature 37.23 C out of range, waiting"},{"t":409.0,"step":196,"areq":0.3614,"aact":0.3608,"temp":37.2695,"event":"temperature 37.25 C out of range, waiting"},{"t":409.0,"step":196,"areq":0.0,"aact":0.3623,"temp":37.2536,"event":"abort: temperature out of range 10 times in a row"}],"afb_trip":[{"t":1.0,"step":0,"areq":0.05,"aact":0.0437,"temp":34.6291,"event":"feedbacks enabled"},{"t":3.0,"step":1,"areq":0.05,"aact":0.0498,"temp":34.601,"event":""},{"t":5.0,"step":2,"areq":0.0516,"aact":0.0516,"temp":34.6034,"event":""},{"t":7.0,"step":3,"areq":0.0532,"aact":0.0532,"temp":34.5997,"event":""},{"t":9.0,"step":4,"areq":0.0548,"aact":0.0548,"temp":34.6492,"event":""},{"t":11.0,"step":5,"areq":0.0564,"aact":0.0565,"temp":34.6057,"event":""},{"t":13.0,"step":6,"areq":0.058,"aact":0.058,"temp":34.6226,"event":""},{"t":15.0,"step":7,"areq":0.0596,"aact":0.0595,"temp":34.6114,"event":""},{"t":17.0,"step":8,"areq":0.0612,"aact":0.0612,"temp":34.6247,"event":""},{"t":19.0,"step":9,"areq":0.0628,"aact":0.0629,"temp":34.5816,"event":""},{"t":21.0,"step":10,"areq":0.0644,"aact":0.0647,"temp":34.6019,"event":""},{"t":23.0,"step":11,"areq":0.0661,"aact":0.066,"temp":34.5732,"event":""},{"t":25.0,"step":12,"areq":0.0677,"aact":0.0677,"temp":34.5786,"event":""},{"t":27.0,"step":13,"areq":0.0693,"aact":0.0694,"temp":34.5792,"event":""},{"t":29.0,"step":14,"areq":0.0709,"aact":0.071,"temp":34.6089,"event":""},{"t":31.0,"step":15,"areq":0.0725,"aact":0.0725,"temp":34.6286,"event":""},{"t":33.0,"step":16,"areq":0.0741,"aact":0.0739,"temp":34.622,"event":""},{"t":35.0,"step":17,"areq":0.0757,"aact":0.0755,"temp":34.6047,"event":""},{"t":37.0,"step":18,"areq":0.0773,"aact":0.0775,"temp":34.6164,"event":""},{"t":39.0,"step":19,"areq":0.0789,"aact":0.0788,"temp":34.6161,"event":""},{"t":41.0,"step":20,"areq":0.0805,"aact":0.0805,"temp":34.5845,"event":""},{"t":43.0,"step":21,"areq":0.0821,"aact":0.0817,"temp":34.6055,"event":""},{"t":45.0,"step":22,"areq":0.0837,"aact":0.0837,"temp":34.6355,"event":""},{"t":47.0,"step":23,"areq":0.0853,"aact":0.0854,"temp":34.5749,"event":""},{"t":49.0,"step":24,"areq":0.0869,"aact":0.087,"temp":34.5893,"event":""},{"t":51.0,"step":25,"areq":0.0885,"aact":0.0888,"temp":34.6265,"event":""},{"t":53.0,"step":26,"areq":0.0901,"aact":0.0899,"temp":34.6126,"event":""},{"t":55.0,"step":27,"areq":0.0917,"aact":0.0915,"temp":34.6073,"event":""},{"t":57.0,"step":28,"areq":0.0933,"aact":0.0935,"temp":34.6173,"event":""},{"t":59.0,"step":29,"areq":0.0949,"aact":0.0951,"temp":34.5882,"event":""},{"t":61.0,"step":30,"areq":0.0966,"aact":0.0965,"temp":34.6548,"event":""},{"t":63.0,"step":31,"areq":0.0982,"aact":0.0982,"temp":34.6176,"event":""},{"t":65.0,"step":32,"areq":0.0998,"aact":0.1,"temp":34.6359,"event":""},{"t":67.0,"step":33,"areq":0.1014,"aact":0.1015,"temp":34.6396,"event":""},{"t":69.0,"step":34,"areq":0.103,"aact":0.1029,"temp":34.5985,"event":""},{"t":71.0,"step":35,"areq":0.1046,"aact":0.1048,"temp":34.6238,"event":""},{"t":73.0,"step":36,"areq":0.1062,"aact":0.1065,"temp":34.6489,"event":""},{"t":75.0,"step":37,"areq":0.1078,"aact":0.1075,"temp":34.6,"event":""},{"t":77.0,"step":38,"areq":0.1094,"aact":0.1096,"temp":34.6491,"event":""},{"t":79.0,"step":39,"areq":0.111,"aact":0.1109,"temp":34.6022,"event":""},{"t":81.0,"step":40,"areq":0.1126,"aact":0.1127,"temp":34.6027,"event":""},{"t":83.0,"step":41,"areq":0.1142,"aact":0.114,"temp":34.6429,"event":""},{"t":85.0,"step":42,"areq":0.1158,"aact":0.116,"temp":34.634,"event":""},{"t":87.0,"step":43,"areq":0.1174,"aact":0.1172,"temp":34.6661,"event":""},{"t":89.0,"step":44,"areq":0.119,"aact":0.119,"temp":34.6094,"event":""},{"t":91.0,"step":45,"areq":0.1206,"aact":0.1207,"temp":34.6275,"event":""},{"t":93.0,"step":46,"areq":0.1222,"aact":0.1221,"temp":34.6272,"event":""},{"t":95.0,"step":47,"areq":0.1238,"aact":0.1237,"temp":34.6108,"event":""},{"t":97.0,"step":48,"areq":0.1255,"aact":0.1255,"temp":34.6637,"event":""},{"t":99.0,"step":49,"areq":0.1271,"aact":0.1273,"temp":34.6542,"event":""},{"t":101.0,"step":50,"areq":0.1287,"aact":0.1284,"temp":34.6735,"event":""},{"t":103.0,"step":51,"areq":0.1303,"aact":0.1303,"temp":34.6557,"event":""},{"t":105.0,"step":52,"areq":0.1319,"aact":0.1318,"temp":34.6518,"event":""},{"t":107.0,"step":53,"areq":0.1335,"aact":0.1337,"temp":34.6338,"event":""},{"t":109.0,"step":54,"areq":0.1351,"aact":0.1343,"temp":34.6484,"event":""},{"t":111.0,"step":55,"areq":0.1367,"aact":0.1368,"temp":34.6503,"event":""},{"t":113.0,"step":56,"areq":0.1383,"aact":0.1383,"temp":34.6185,"event":""},{"t":115.0,"step":57,"areq":0.1399,"aact":0.1398,"temp":34.661,"event":""},{"t":117.0,"step":58,"areq":0.1415,"aact":0.1421,"temp":34.6366,"event":""},{"t":119.0,"step":59,"areq":0.1431,"aact":0.1432,"temp":34.6534,"event":""},{"t":121.0,"step":60,"areq":0.1447,"aact":0.1448,"temp":34.615,"event":""},{"t":123.0,"step":61,"areq":0.1463,"aact":0.1464,"temp":34.6339,"event":""},{"t":125.0,"step":62,"areq":0.1479,"aact":0.1481,"temp":34.6623,"event":""},{"t":127.0,"step":63,"areq":0.1495,"aact":0.1498,"temp":34.6461,"event":""},{"t":129.0,"step":64,"areq":0.1511,"aact":0.1511,"temp":34.655,"event":""},{"t":131.0,"step":65,"areq":0.1527,"aact":0.1532,"temp":34.6869,"event":""},{"t":133.0,"step":66,"areq":0.1543,"aact":0.1547,"temp":34.6595,"event":""},{"t":135.0,"step":67,"areq":0.156,"aact":0.156,"temp":34.6957,"event":""},{"t":137.0,"step":68,"areq":0.1576,"aact":0.1569,"temp":34.7012,"event":""},{"t":139.0,"step":69,"areq":0.1592,"aact":0.1591,"temp":34.689,"event":""},{"t":141.0,"step":70,"areq":0.1608,"aact":0.1608,"temp":34.6687,"event":""},{"t":143.0,"step":71,"areq":0.1624,"aact":0.1621,"temp":34.6573,"event":""},{"t":145.0,"step":72,"areq":0.164,"aact":0.1647,"temp":34.6442,"event":""},{"t":147.0,"step":73,"areq":0.1656,"aact":0.1657,"temp":34.7006,"event":""},{"t":149.0,"step":74,"areq":0.1672,"aact":0.167,"temp":34.6481,"event":""},{"t":151.0,"step":75,"areq":0.1688,"aact":0.1687,"temp":34.6913,"event":""},{"t":153.0,"step":76,"areq":0.1704,"aact":0.1708,"temp":34.6769,"event":""},{"t":155.0,"step":77,"areq":0.172,"aact":0.1723,"temp":34.6739,"event":""},{"t":157.0,"step":78,"areq":0.1736,"aact":0.1733,"temp":34.7185,"event":""},{"t":159.0,"step":79,"areq":0.1752,"aact":0.175,"temp":34.7067,"event":""},{"t":161.0,"step":80,"areq":0.1768,"aact":0.1768,"temp":34.6912,"event":""},{"t":163.0,"step":81,"areq":0.1784,"aact":0.1783,"temp":34.6868,"event":""},{"t":165.0,"step":82,"areq":0.18,"aact":0.1799,"temp":34.7256,"event":""},{"t":167.0,"step":83,"areq":0.1816,"aact":0.1819,"temp":34.7129,"event":""},{"t":169.0,"step":84,"areq":0.1832,"aact":0.1834,"temp":34.6917,"event":""},{"t":171.0,"step":85,"areq":0.1848,"aact":0.185,"temp":34.6819,"event":""},{"t":173.0,"step":86,"areq":0.1865,"aact":0.1867,"temp":34.6918,"event":""},{"t":175.0,"step":87,"areq":0.1881,"aact":0.1881,"temp":34.6994,"event":""},{"t":177.0,"step":88,"areq":0.1897,"aact":0.1899,"temp":34.6632,"event":""},{"t":179.0,"step":89,"areq":0.1913,"aact":0.1912,"temp":34.695,"event":""},{"t":181.0,"step":90,"areq":0.1929,"aact":0.1927,"temp":34.68,"event":""},{"t":183.0,"step":91,"areq":0.1945,"aact":0.1952,"temp":34.703,"event":""},{"t":185.0,"step":92,"areq":0.1961,"aact":0.1963,"temp":34.696,"event":""},{"t":187.0,"step":93,"areq":0.1977,"aact":0.1977,"temp":34.7205,"event":""},{"t":189.0,"step":94,"areq":0.1993,"aact":0.1991,"temp":34.7154,"event":""},{"t":191.0,"step":95,"areq":0.2009,"aact":0.2011,"temp":34.7318,"event":""},{"t":193.0,"step":96,"areq":0.2025,"aact":0.202,"temp":34.7394,"event":""},{"t":195.0,"step":97,"areq":0.2041,"aact":0.2036,"temp":34.7216,"event":""},{"t":197.0,"step":98,"areq":0.2057,"aact":0.2054,"temp":34.6985,"event":""},{"t":199.0,"step":99,"areq":0.2073,"aact":0.207,"temp":34.7328,"event":""},{"t":201.0,"step":100,"areq":0.2089,"aact":0.2097,"temp":34.7088,"event":""},{"t":203.0,"step":101,"areq":0.2105,"aact":0.2107,"temp":34.7384,"event":""},{"t":205.0,"step":102,"areq":0.2121,"aact":0.2125,"temp":34.7674,"event":""},{"t":207.0,"step":103,"areq":0.2137,"aact":0.2134,"temp":34.705,"event":""},{"t":209.0,"step":104,"areq":0.2154,"aact":0.2153,"temp":34.7173,"event":""},{"t":211.0,"step":105,"areq":0.217,"aact":0.2175,"temp":34.7403,"event":""},{"t":213.0,"step":106,"areq":0.2186,"aact":0.2187,"temp":34.7749,"event":""},{"t":215.0,"step":107,"areq":0.2202,"aact":0.2199,"temp":34.7234,"event":""},{"t":217.0,"step":108,"areq":0.2218,"aact":0.2221,"temp":34.7829,"event":""},{"t":219.0,"step":109,"areq":0.2234,"aact":0.2236,"temp":34.7316,"event":""},{"t":221.0,"step":110,"areq":0.225,"aact":0.2252,"temp":34.758,"event":""},{"t":223.0,"step":111,"areq":0.2266,"aact":0.2262,"temp":34.7375,"event":""},{"t":225.0,"step":112,"areq":0.2282,"aact":0.2286,"temp":34.763,"event":""},{"t":227.0,"step":113,"areq":0.2298,"aact":0.23,"temp":34.7848,"event":""},{"t":229.0,"step":114,"areq":0.2314,"aact":0.2316,"temp":34.7699,"event":""},{"t":231.0,"step":115,"areq":0.233,"aact":0.2333,"temp":34.7868,"event":""},{"t":233.0,"step":116,"areq":0.2346,"aact":0.2349,"temp":34.7788,"event":""},{"t":235.0,"step":117,"areq":0.2362,"aact":0.2358,"temp":34.7619,"event":""},{"t":237.0,"step":118,"areq":0.2378,"aact":0.2377,"temp":34.809,"event":""},{"t":239.0,"step":119,"areq":0.2394,"aact":0.2394,"temp":34.8181,"event":""},{"t":241.0,"step":120,"areq":0.241,"aact":0.2416,"temp":34.7867,"event":""},{"t":243.0,"step":121,"areq":0.2426,"aact":0.2427,"temp":34.7682,"event":""},{"t":245.0,"step":122,"areq":0.2442,"aact":0.2449,"temp":34.82,"event":""},{"t":247.0,"step":123,"areq":0.2459,"aact":0.2446,"temp":34.7859,"event":""},{"t":249.0,"step":124,"areq":0.2475,"aact":0.2478,"temp":34.8215,"event":""},{"t":251.0,"step":125,"areq":0.2491,"aact":0.2486,"temp":34.8066,"event":""},{"t":253.0,"step":126,"areq":0.2507,"aact":0.2501,"temp":34.818,"event":""},{"t":255.0,"step":127,"areq":0.2523,"aact":0.2524,"temp":34.7839,"event":""},{"t":257.0,"step":128,"areq":0.2539,"aact":0.2536,"temp":34.8263,"event":""},{"t":259.0,"step":129,"areq":0.2555,"aact":0.2546,"temp":34.7964,"event":""},{"t":261.0,"step":130,"areq":0.2571,"aact":0.2576,"temp":34.8219,"event":""},{"t":263.0,"step":131,"areq":0.2587,"aact":0.2586,"temp":34.768,"event":""},{"t":265.0,"step":132,"areq":0.2603,"aact":0.2598,"temp":34.8138,"event":""},{"t":267.0,"step":133,"areq":0.2619,"aact":0.2615,"temp":34.8477,"event":""},{"t":269.0,"step":134,"areq":0.2635,"aact":0.2628,"temp":34.8213,"event":""},{"t":271.0,"step":135,"areq":0.2651,"aact":0.2642,"temp":34.8428,"event":""},{"t":273.0,"step":136,"areq":0.2667,"aact":0.2663,"temp":34.83,"event":""},{"t":275.0,"step":137,"areq":0.2683,"aact":0.2692,"temp":34.835,"event":""},{"t":277.0,"step":138,"areq":0.2699,"aact":0.2702,"temp":34.8271,"event":""},{"t":279.0,"step":139,"areq":0.2715,"aact":0.2712,"temp":34.8165,"event":""},{"t":281.0,"step":140,"areq":0.2731,"aact":0.2734,"temp":34.8395,"event":""},{"t":283.0,"step":141,"areq":0.2747,"aact":0.2738,"temp":34.8611,"event":""},{"t":285.0,"step":142,"areq":0.2764,"aact":0.2763,"temp":34.8637,"event":""},{"t":287.0,"step":143,"areq":0.278,"aact":0.2777,"temp":34.8519,"event":""},{"t":289.0,"step":144,"areq":0.2796,"aact":0.2796,"temp":34.8878,"event":""},{"t":291.0,"step":145,"areq":0.2812,"aact":0.2821,"temp":34.8956,"event":""},{"t":293.0,"step":146,"areq":0.2828,"aact":0.2818,"temp":34.88,"event":""},{"t":295.0,"step":147,"areq":0.2844,"aact":0.2841,"temp":34.8505,"event":""},{"t":297.0,"step":148,"areq":0.286,"aact":0.2861,"temp":34.9157,"event":""},{"t":299.0,"step":149,"areq":0.2876,"aact":0.2879,"temp":34.8809,"event":""},{"t":301.0,"step":150,"areq":0.2892,"aact":0.2889,"temp":34.861,"event":""},{"t":303.0,"step":151,"areq":0.2908,"aact":0.2904,"temp":34.89,"event":""},{"t":305.0,"step":152,"areq":0.2924,"aact":0.2925,"temp":34.8935,"event":""},{"t":307.0,"step":153,"areq":0.294,"aact":0.2946,"temp":34.9066,"event":""},{"t":309.0,"step":154,"areq":0.2956,"aact":0.2952,"temp":34.9047,"event":""},{"t":311.0,"step":155,"areq":0.2972,"aact":0.2978,"temp":34.9427,"event":""},{"t":313.0,"step":156,"areq":0.2988,"aact":0.2989,"temp":34.9545,"event":""},{"t":315.0,"step":157,"areq":0.3004,"aact":0.3009,"temp":34.9394,"event":""},{"t":317.0,"step":158,"areq":0.302,"aact":0.3021,"temp":34.9373,"event":""},{"t":319.0,"step":159,"areq":0.3036,"aact":0.3037,"temp":34.9406,"event":""},{"t":321.0,"step":160,"areq":0.3053,"aact":0.3061,"temp":34.9335,"event":""},{"t":323.0,"step":161,"areq":0.3069,"aact":0.3075,"temp":34.9647,"event":""},{"t":325.0,"step":162,"areq":0.3085,"aact":0.3078,"temp":34.9489,"event":""},{"t":327.0,"step":163,"areq":0.3101,"aact":0.3103,"temp":34.9325,"event":""},{"t":329.0,"step":164,"areq":0.3117,"aact":0.3115,"temp":34.9396,"event":""},{"t":331.0,"step":165,"areq":0.3133,"aact":0.3135,"temp":34.9613,"event":""},{"t":333.0,"step":166,"areq":0.3149,"aact":0.3146,"temp":34.9837,"event":""},{"t":335.0,"step":167,"areq":0.3165,"aact":0.3154,"temp":34.9946,"event":""},{"t":337.0,"step":168,"areq":0.3181,"aact":0.3182,"temp":34.9731,"event":""},{"t":339.0,"step":169,"areq":0.3197,"aact":0.3203,"temp":34.9863,"event":""},{"t":341.0,"step":170,"areq":0.3213,"aact":0.322,"temp":34.9473,"event":""},{"t":343.0,"step":171,"areq":0.3229,"aact":0.323,"temp":34.9836,"event":""},{"t":345.0,"step":172,"areq":0.3245,"aact":0.3246,"temp":34.9958,"event":""},{"t":347.0,"step":173,"areq":0.3261,"aact":0.3256,"temp":34.9623,"event":""},{"t":349.0,"step":174,"areq":0.3277,"aact":0.3265,"temp":34.9638,"event":""},{"t":351.0,"step":175,"areq":0.3293,"aact":0.3307,"temp":35.0246,"event":""},{"t":353.0,"step":176,"areq":0.3309,"aact":0.3302,"temp":34.9963,"event":""},{"t":355.0,"step":177,"areq":0.3325,"aact":0.3321,"temp":35.0333,"event":""},{"t":357.0,"step":178,"areq":0.3341,"aact":0.3333,"temp":35.0352,"event":""},{"t":359.0,"step":179,"areq":0.3358,"aact":0.3355,"temp":34.9936,"event":""},{"t":361.0,"step":180,"areq":0.3374,"aact":0.3382,"temp":35.0677,"event":""},{"t":363.0,"step":181,"areq":0.339,"aact":0.3392,"temp":35.0391,"event":""},{"t":365.0,"step":182,"areq":0.3406,"aact":0.3392,"temp":35.0832,"event":""},{"t":367.0,"step":183,"areq":0.3422,"aact":0.3418,"temp":35.0497,"event":""},{"t":369.0,"step":184,"areq":0.3438,"aact":0.3439,"temp":35.048,"event":""},{"t":371.0,"step":185,"areq":0.3454,"aact":0.3455,"temp":35.048,"event":""},{"t":373.0,"step":186,"areq":0.347,"aact":0.3469,"temp":35.0439,"event":""},{"t":375.0,"step":187,"areq":0.3486,"aact":0.3491,"temp":35.0293,"event":""},{"t":377.0,"step":188,"areq":0.3502,"aact":0.3502,"temp":35.0968,"event":""},{"t":379.0,"step":189,"areq":0.3518,"aact":0.3522,"temp":35.0274,"event":""},{"t":381.0,"step":190,"areq":0.3534,"aact":0.3529,"temp":35.0637,"event":""},{"t":383.0,"step":191,"areq":0.355,"aact":0.3556,"temp":35.0599,"event":""},{"t":385.0,"step":192,"areq":0.3566,"aact":0.3569,"temp":35.0775,"event":""},{"t":387.0,"step":193,"areq":0.3582,"aact":0.3579,"temp":35.096,"event":""},{"t":389.0,"step":194,"areq":0.3598,"aact":0.3611,"temp":35.1124,"event":""},{"t":391.0,"step":195,"areq":0.3614,"aact":0.3612,"temp":35.1255,"event":""},{"t":393.0,"step":196,"areq":0.363,"aact":0.3621,"temp":35.1129,"event":""},{"t":395.0,"step":197,"areq":0.3646,"aact":0.3643,"temp":35.1343,"event":""},{"t":397.0,"step":198,"areq":0.3663,"aact":0.3646,"temp":35.1294,"event":""},{"t":399.0,"step":199,"areq":0.3679,"aact":0.3685,"temp":35.0874,"event":""},{"t":401.0,"step":200,"areq":0.3695,"aact":0.3699,"temp":35.1529,"event":""},{"t":401.0,"step":201,"areq":0.0,"aact":0.3682,"temp":35.1412,"event":"abort: afb_status went 'Tripped'"}]},"coll_summary":{"misalignment":{"cathode_offset_um":[150.0,-100.0]},"scan":{"span_mrad":1.5,"n":11,"runs":121},"xc00_yc00_mrad":[-1.2070678920773033,-0.5731755818219856],"transmission_peak_fit":0.07336140528788461,"xc01_yc01_mrad":[1.2732,0.6488],"steering_iterations":[{"centroid_um":[-3119.0689657115645,-2442.1715301935433],"response_um_per_mrad":[[2820.41578666154,-357.1864530602011],[414.8224846595326,2447.6867816780837]],"next_k01_mrad":[1.2063557161453065,0.79329923631311]},{"centroid_um":[-261.8908592049353,370.39030427549864],"response_um_per_mrad":[[2805.6419785596986,-514.8756271046875],[355.094747710136,2727.041618491945]],"next_k01_mrad":[1.273178140374562,0.6487768375803347]}],"start":{"transmission":0.0,"andor1_centroid_um":[null,null],"sample1_centroid_um":[null,null]},"after_xc00":{"transmission":0.0639000000000006,"andor1_centroid_um":[-3119.07,-2442.17],"sample1_centroid_um":[-896.04,-705.01]},"final":{"transmission":0.06380000000000059,"andor1_centroid_um":[25.85,-28.91],"sample1_centroid_um":[-123.6,-104.75]},"wall_time_s":356.0},"coll_map":{"k":[-1.5,-1.2,-0.9,-0.6,-0.3,0.0,0.3,0.6,0.9,1.2,1.5],"t":[[0.0165,0.02,0.0146,0.0052,0.0004,0.0,0.0,0.0,0.0,0.0,0.0],[0.0404,0.0451,0.0382,0.0221,0.0054,0.0,0.0,0.0,0.0,0.0,0.0],[0.0565,0.0583,0.0552,0.0378,0.0145,0.0006,0.0,0.0,0.0,0.0,0.0],[0.0601,0.0636,0.0602,0.0439,0.018,0.0014,0.0,0.0,0.0,0.0,0.0],[0.0586,0.0616,0.0565,0.0393,0.017,0.0005,0.0,0.0,0.0,0.0,0.0],[0.0449,0.0495,0.0424,0.0262,0.0072,0.0,0.0,0.0,0.0,0.0,0.0],[0.0211,0.0256,0.02,0.0087,0.0007,0.0,0.0,0.0,0.0,0.0,0.0],[0.0028,0.0048,0.0016,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]]},"coll_profiles":{"start":{"z":[0.025,0.075,0.125,0.175,0.225,0.275,0.325,0.375,0.425,0.475,0.5,0.525,0.575,0.8,1.499,2.487,3.988,4.631],"x_um":[151.404,185.475,257.835,331.05,364.057,349.482,325.706,313.701,303.501,293.59,288.663,283.735,273.88,null,null,null,null,null],"y_um":[-100.517,-116.613,-117.332,-58.442,33.918,122.337,155.374,155.08,150.982,146.3,143.901,141.504,136.708,null,null,null,null,null],"transmission":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.0,0.0,0.0,0.0,0.0]},"after_xc00":{"z":[0.025,0.075,0.125,0.175,0.225,0.275,0.325,0.375,0.425,0.475,0.5,0.525,0.575,0.625,0.675,0.725,0.775,0.8,0.825,0.875,0.925,0.975,1.025,1.075,1.125,1.175,1.225,1.275,1.325,1.375,1.425,1.475,1.499,1.525,1.575,1.625,1.675,1.725,1.775,1.825,1.875,1.925,1.975,2.025,2.075,2.125,2.175,2.225,2.275,2.325,2.375,2.425,2.475,2.487,2.525,2.575,2.625,2.675,2.725,2.775,2.825,2.875,2.925,2.975,3.025,3.075,3.125,3.175,3.225,3.275,3.325,3.375,3.425,3.475,3.525,3.575,3.625,3.675,3.725,3.775,3.825,3.875,3.925,3.975,3.988,4.025,4.075,4.125,4.175,4.225,4.275,4.325,4.375,4.425,4.475,4.525,4.575,4.625,4.631,4.675],"x_um":[151.404,185.475,257.835,331.049,364.035,348.872,314.557,259.553,191.303,122.138,87.567,53.002,-16.15,-85.296,-163.062,-232.176,-301.291,-335.848,-370.405,-439.519,-508.633,-577.731,-562.057,-595.1,-630.589,-666.077,-701.566,-737.055,-772.543,-808.032,-843.521,-879.009,-896.044,-914.498,-949.987,-985.475,-1020.964,-1056.453,-1091.941,-1127.43,-1162.918,-1198.407,-1233.896,-1269.385,-1304.874,-1340.362,-1375.851,-1411.34,-1446.829,-1482.317,-1517.806,-1553.295,-1588.784,-1597.301,-1624.272,-1659.761,-1695.251,-1730.74,-1766.229,-1801.718,-1837.207,-1872.696,-1908.185,-1943.674,-1979.163,-2014.652,-2050.141,-2085.63,-2121.119,-2156.608,-2192.097,-2227.585,-2263.074,-2298.563,-2334.052,-2369.541,-2405.03,-2440.519,-2476.009,-2511.498,-2546.987,-2582.476,-2617.965,-2653.454,-2662.681,-2688.943,-2724.432,-2759.921,-2795.41,-2830.899,-2866.388,-2901.877,-2937.366,-2972.854,-3008.343,-3043.832,-3079.321,-3114.81,-3119.069,-3150.299],"y_um":[-100.517,-116.613,-117.332,-58.442,33.903,121.915,148.947,126.161,92.18,56.986,39.311,21.62,-13.713,-49.062,-82.554,-117.883,-153.212,-170.876,-188.541,-223.87,-259.199,-294.561,-438.979,-469.835,-497.568,-525.3,-553.033,-580.766,-608.499,-636.232,-663.965,-691.698,-705.009,-719.43,-747.163,-774.896,-802.628,-830.361,-858.094,-885.826,-913.559,-941.292,-969.024,-996.757,-1024.489,-1052.222,-1079.954,-1107.687,-1135.419,-1163.152,-1190.884,-1218.617,-1246.35,-1253.005,-1274.082,-1301.815,-1329.547,-1357.28,-1385.012,-1412.744,-1440.477,-1468.209,-1495.942,-1523.674,-1551.407,-1579.139,-1606.872,-1634.604,-1662.336,-1690.069,-1717.801,-1745.534,-1773.266,-1800.998,-1828.731,-1856.463,-1884.196,-1911.928,-1939.661,-1967.393,-1995.126,-2022.858,-2050.59,-2078.323,-2085.533,-2106.055,-2133.788,-2161.52,-2189.252,-2216.985,-2244.717,-2272.449,-2300.182,-2327.914,-2355.647,-2383.379,-2411.111,-2438.844,-2442.172,-2466.576],"transmission":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064]},"final":{"z":[0.025,0.075,0.125,0.175,0.225,0.275,0.325,0.375,0.425,0.475,0.5,0.525,0.575,0.625,0.675,0.725,0.775,0.8,0.825,0.875,0.925,0.975,1.025,1.075,1.125,1.175,1.225,1.275,1.325,1.375,1.425,1.475,1.499,1.525,1.575,1.625,1.675,1.725,1.775,1.825,1.875,1.925,1.975,2.025,2.075,2.125,2.175,2.225,2.275,2.325,2.375,2.425,2.475,2.487,2.525,2.575,2.625,2.675,2.725,2.775,2.825,2.875,2.925,2.975,3.025,3.075,3.125,3.175,3.225,3.275,3.325,3.375,3.425,3.475,3.525,3.575,3.625,3.675,3.725,3.775,3.825,3.875,3.925,3.975,3.988,4.025,4.075,4.125,4.175,4.225,4.275,4.325,4.375,4.425,4.475,4.525,4.575,4.625,4.631,4.675],"x_um":[151.404,185.475,257.835,331.049,364.035,348.872,314.557,259.553,191.303,122.138,87.569,53.007,-15.956,-89.522,-126.75,-136.456,-142.152,-144.895,-147.622,-153.074,-158.525,-163.945,-146.851,-143.902,-141.542,-139.182,-136.823,-134.463,-132.103,-129.743,-127.383,-125.023,-123.89,-122.663,-120.303,-117.943,-115.583,-113.223,-110.863,-108.503,-106.143,-103.783,-101.423,-99.064,-96.704,-94.344,-91.984,-89.624,-87.264,-84.904,-82.544,-80.185,-77.825,-77.259,-75.465,-73.105,-70.745,-68.385,-66.025,-63.665,-61.306,-58.946,-56.586,-54.226,-51.866,-49.506,-47.146,-44.786,-42.426,-40.067,-37.707,-35.347,-32.987,-30.627,-28.266,-25.906,-23.546,-21.186,-18.826,-16.467,-14.107,-11.747,-9.388,-7.028,-6.415,-4.668,-2.308,0.051,2.411,4.771,7.131,9.491,11.851,14.211,16.571,18.931,21.291,23.651,23.934,26.011],"y_um":[-100.517,-116.613,-117.332,-58.442,33.903,121.915,148.947,126.161,92.18,56.986,39.312,21.623,-13.615,-45.002,-64.087,-69.147,-72.164,-73.619,-75.065,-77.958,-80.85,-83.805,-115.415,-114.918,-113.673,-112.428,-111.183,-109.938,-108.693,-107.448,-106.203,-104.958,-104.36,-103.713,-102.467,-101.222,-99.977,-98.732,-97.487,-96.242,-94.997,-93.752,-92.506,-91.261,-90.016,-88.771,-87.526,-86.28,-85.035,-83.79,-82.545,-81.3,-80.055,-79.756,-78.809,-77.564,-76.319,-75.074,-73.828,-72.583,-71.338,-70.093,-68.847,-67.602,-66.357,-65.112,-63.866,-62.621,-61.376,-60.13,-58.885,-57.64,-56.394,-55.149,-53.904,-52.658,-51.413,-50.168,-48.922,-47.677,-46.432,-45.187,-43.942,-42.697,-42.373,-41.451,-40.206,-38.961,-37.715,-36.47,-35.225,-33.98,-32.734,-31.489,-30.244,-28.999,-27.753,-26.508,-26.358,-25.263],"transmission":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064,0.064]}}}</script>
+<script>
+(function () {
+  'use strict';
+  var D = JSON.parse(document.getElementById('report-data').textContent);
+  var NS = 'http://www.w3.org/2000/svg';
+
+  // ---------- theme switch ----------
+  var root = document.documentElement;
+  var btn = document.getElementById('theme-toggle');
+  var label = document.getElementById('theme-label');
+  var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  try {
+    var saved = localStorage.getItem('ued-bringup-theme');
+    if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+  function current() {
+    var t = root.getAttribute('data-theme');
+    if (t === 'light' || t === 'dark') return t;
+    return mq && mq.matches ? 'dark' : 'light';
+  }
+  function sync() {
+    var t = current();
+    root.classList.toggle('is-dark', t === 'dark');
+    label.textContent = t === 'dark' ? 'Dark' : 'Light';
+    btn.setAttribute('aria-label', t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+  btn.addEventListener('click', function () {
+    var next = current() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('ued-bringup-theme', next); } catch (e) {}
+    sync();
+  });
+  if (mq && mq.addEventListener) mq.addEventListener('change', sync);
+  new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  sync();
+
+  // ---------- helpers ----------
+  function el(tag, attrs, parent, text) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function lin(d, r) {
+    var f = function (v) { return r[0] + (v - d[0]) / (d[1] - d[0]) * (r[1] - r[0]); };
+    f.inv = function (p) { return d[0] + (p - r[0]) / (r[1] - r[0]) * (d[1] - d[0]); };
+    return f;
+  }
+  function ticks(d, n) {
+    var span = d[1] - d[0], raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    var e = raw / mag, step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag;
+    var out = [], v = Math.ceil(d[0] / step - 1e-9) * step;
+    for (; v <= d[1] + step * 1e-6; v += step) out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+    return out;
+  }
+  function fmtNum(v, dp) { var s = v.toFixed(dp); return s.replace('-', '−'); }
+  function tip(host) {
+    var t = document.createElement('div'); t.className = 'tip'; t.hidden = true; host.appendChild(t); return t;
+  }
+  function placeTip(t, host, px, py) {
+    var w = host.clientWidth, tw = t.offsetWidth;
+    var left = px + 14 + tw > w ? px - 14 - tw : px + 14;
+    t.style.left = Math.max(0, left) + 'px';
+    t.style.top = Math.max(0, py - 10) + 'px';
+  }
+  var SER = ['var(--s1)', 'var(--s2)', 'var(--s3)'];
+
+  function legend(id, names) {
+    var host = document.getElementById(id);
+    names.forEach(function (n, i) {
+      var s = document.createElement('span'), sw = document.createElement('i');
+      sw.style.background = SER[i]; s.appendChild(sw); s.appendChild(document.createTextNode(n)); host.appendChild(s);
+    });
+  }
+
+  // ---------- line chart ----------
+  function lineChart(id, o) {
+    var host = document.getElementById(id);
+    var W = 560, H = o.height || 230, m = { l: 62, r: 16, t: 12, b: 40 };
+    var xs = [], ys = [];
+    o.series.forEach(function (s) {
+      s.x.forEach(function (v, i) { if (isFinite(v) && isFinite(s.y[i])) { xs.push(v); ys.push(s.y[i]); } });
+    });
+    var xd = o.xd || [Math.min.apply(null, xs), Math.max.apply(null, xs)];
+    var yd = o.yd || (function () {
+      var a = Math.min.apply(null, ys), b = Math.max.apply(null, ys), p = (b - a) * 0.06 || 1;
+      return [a - p, b + p];
+    })();
+    var X = lin(xd, [m.l, W - m.r]), Y = lin(yd, [H - m.b, m.t]);
+    var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': o.aria });
+    ticks(yd, 5).forEach(function (v) {
+      el('line', { 'class': 'grid-l', x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v) }, svg);
+      el('text', { 'class': 'ax-t', x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, svg, o.fy(v));
+    });
+    ticks(xd, 6).forEach(function (v) {
+      el('line', { 'class': 'base-l', x1: X(v), x2: X(v), y1: H - m.b, y2: H - m.b + 4 }, svg);
+      el('text', { 'class': 'ax-t', x: X(v), y: H - m.b + 17, 'text-anchor': 'middle' }, svg, o.fx(v));
+    });
+    el('line', { 'class': 'base-l', x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b }, svg);
+    el('text', { 'class': 'ax-l', x: (m.l + W - m.r) / 2, y: H - 4, 'text-anchor': 'middle' }, svg, o.xl);
+    el('text', { 'class': 'ax-l', x: 0, y: 0, 'text-anchor': 'middle', transform: 'translate(13 ' + ((m.t + H - m.b) / 2) + ') rotate(-90)' }, svg, o.yl);
+    (o.hlines || []).forEach(function (h) {
+      el('line', { 'class': 'ref-l', x1: m.l, x2: W - m.r, y1: Y(h.y), y2: Y(h.y) }, svg);
+      if (h.t) el('text', { 'class': 'ref-t', x: W - m.r - 2, y: Y(h.y) - 4, 'text-anchor': 'end' }, svg, h.t);
+    });
+    (o.vlines || []).forEach(function (v) {
+      el('line', { 'class': 'ref-l', x1: X(v.x), x2: X(v.x), y1: m.t, y2: H - m.b }, svg);
+      if (v.t) el('text', { 'class': 'ref-t', x: X(v.x) - 4, y: m.t + 10, 'text-anchor': 'end' }, svg, v.t);
+    });
+    o.series.forEach(function (s, k) {
+      var d = '', pen = false;
+      s.x.forEach(function (v, i) {
+        var y = s.y[i];
+        if (!isFinite(v) || !isFinite(y)) { pen = false; return; }
+        d += (pen ? 'L' : 'M') + X(v).toFixed(1) + ' ' + Y(y).toFixed(1); pen = true;
+      });
+      el('path', { 'class': 'ln c' + (k + 1), d: d }, svg);
+      if (o.markers) s.x.forEach(function (v, i) {
+        if (isFinite(s.y[i])) el('circle', { 'class': 'mk f' + (k + 1), cx: X(v), cy: Y(s.y[i]), r: 4 }, svg);
+      });
+    });
+    var xh = el('line', { 'class': 'xh', y1: m.t, y2: H - m.b, visibility: 'hidden' }, svg);
+    var dots = o.series.map(function (s, k) { return el('circle', { 'class': 'mk f' + (k + 1), r: 4.5, visibility: 'hidden' }, svg); });
+    var hit = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' }, svg);
+    host.appendChild(svg);
+    var t = tip(host);
+    function nearest(s, xv) {
+      var best = -1, bd = Infinity;
+      for (var i = 0; i < s.x.length; i++) {
+        if (!isFinite(s.y[i])) continue;
+        var dd = Math.abs(s.x[i] - xv); if (dd < bd) { bd = dd; best = i; }
+      }
+      return best;
+    }
+    function move(ev) {
+      var r = svg.getBoundingClientRect(), sc = W / r.width;
+      var xv = X.inv((ev.clientX - r.left) * sc);
+      // snap to the data point nearest the pointer, in whichever series has it
+      var ref = null;
+      o.series.forEach(function (s) {
+        var i = nearest(s, xv);
+        if (i >= 0 && (ref === null || Math.abs(s.x[i] - xv) < Math.abs(ref - xv))) ref = s.x[i];
+      });
+      if (ref === null) return;
+      var html = '<b>' + o.tx(ref) + '</b>';
+      o.series.forEach(function (s, k) {
+        var i = nearest(s, ref);
+        var ok = i >= 0 && Math.abs(s.x[i] - ref) <= (o.snap || Infinity);
+        dots[k].setAttribute('visibility', ok ? 'visible' : 'hidden');
+        if (!ok) return;
+        dots[k].setAttribute('cx', X(s.x[i])); dots[k].setAttribute('cy', Y(s.y[i]));
+        html += '<br><i style="background:' + SER[k] + '"></i>' + (s.name ? s.name + ': ' : '') + o.ty(s.y[i]);
+      });
+      xh.setAttribute('x1', X(ref)); xh.setAttribute('x2', X(ref)); xh.setAttribute('visibility', 'visible');
+      t.innerHTML = html; t.hidden = false;
+      placeTip(t, host, (X(ref)) / sc, (ev.clientY - r.top));
+    }
+    function leave() { t.hidden = true; xh.setAttribute('visibility', 'hidden'); dots.forEach(function (d) { d.setAttribute('visibility', 'hidden'); }); }
+    hit.addEventListener('pointermove', move);
+    hit.addEventListener('pointerleave', leave);
+  }
+
+  // ---------- heatmap ----------
+  function heatmap(id, k, t, marks) {
+    var host = document.getElementById(id);
+    var W = 560, H = 430, m = { l: 62, r: 92, t: 12, b: 44 };
+    var n = k.length, dk = k[1] - k[0];
+    var side = Math.min(W - m.l - m.r, H - m.t - m.b);
+    var d = [k[0] - dk / 2, k[n - 1] + dk / 2];
+    var X = lin(d, [m.l, m.l + side]), Y = lin(d, [m.t + side, m.t]);
+    var tmax = 0; t.forEach(function (row) { row.forEach(function (v) { tmax = Math.max(tmax, v); }); });
+    var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': 'Transmission map over XC00 and YC00 kicks' });
+    el('rect', { 'class': 'plot-bg', x: m.l, y: m.t, width: side, height: side }, svg);
+    var cells = el('g', {}, svg);
+    for (var i = 0; i < n; i++) for (var j = 0; j < n; j++) {
+      el('rect', { 'class': 'cell', x: X(k[j] - dk / 2), y: Y(k[i] + dk / 2), width: side / n, height: side / n, 'fill-opacity': (t[i][j] / tmax).toFixed(3) }, cells);
+    }
+    [-1.5, -1, -0.5, 0, 0.5, 1, 1.5].forEach(function (v) {
+      el('text', { 'class': 'ax-t', x: X(v), y: m.t + side + 17, 'text-anchor': 'middle' }, svg, fmtNum(v, 1));
+      el('text', { 'class': 'ax-t', x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, svg, fmtNum(v, 1));
+    });
+    el('text', { 'class': 'ax-l', x: m.l + side / 2, y: m.t + side + 36, 'text-anchor': 'middle' }, svg, 'XC00 kick (mrad)');
+    el('text', { 'class': 'ax-l', x: 0, y: 0, 'text-anchor': 'middle', transform: 'translate(13 ' + (m.t + side / 2) + ') rotate(-90)' }, svg, 'YC00 kick (mrad)');
+    // colour scale
+    var gx = m.l + side + 22, gw = 12;
+    var defs = el('defs', {}, svg), g = el('linearGradient', { id: 'seqgrad', x1: 0, y1: 1, x2: 0, y2: 0 }, defs);
+    el('stop', { offset: 0, style: 'stop-color: var(--seq); stop-opacity: 0' }, g);
+    el('stop', { offset: 1, style: 'stop-color: var(--seq); stop-opacity: 1' }, g);
+    el('rect', { x: gx, y: m.t, width: gw, height: side, fill: 'url(#seqgrad)', stroke: 'var(--rule)' }, svg);
+    var C = lin([0, tmax * 100], [m.t + side, m.t]);
+    [0, 2, 4, 6].forEach(function (v) {
+      el('line', { 'class': 'base-l', x1: gx + gw, x2: gx + gw + 4, y1: C(v), y2: C(v) }, svg);
+      el('text', { 'class': 'ax-t', x: gx + gw + 7, y: C(v) + 4 }, svg, v + ' %');
+    });
+    el('text', { 'class': 'ax-l', x: 0, y: 0, 'text-anchor': 'middle', transform: 'translate(' + (gx + gw + 46) + ' ' + (m.t + side / 2) + ') rotate(90)' }, svg, 'transmission');
+    // markers
+    marks.forEach(function (mk) {
+      if (mk.kind === 'o') el('circle', { 'class': 'mark-o', cx: X(mk.x), cy: Y(mk.y), r: 7 }, svg);
+      else {
+        el('line', { 'class': 'mark-p', x1: X(mk.x) - 7, x2: X(mk.x) + 7, y1: Y(mk.y), y2: Y(mk.y) }, svg);
+        el('line', { 'class': 'mark-p', x1: X(mk.x), x2: X(mk.x), y1: Y(mk.y) - 7, y2: Y(mk.y) + 7 }, svg);
+      }
+      el('text', { 'class': 'mark-t', x: X(mk.x) + 11, y: Y(mk.y) + (mk.dy || 4) }, svg, mk.t);
+    });
+    var hot = el('rect', { 'class': 'cell-hot', width: side / n, height: side / n, visibility: 'hidden' }, svg);
+    var hit = el('rect', { x: m.l, y: m.t, width: side, height: side, fill: 'transparent' }, svg);
+    host.appendChild(svg);
+    var tp = tip(host);
+    hit.addEventListener('pointermove', function (ev) {
+      var r = svg.getBoundingClientRect(), sc = W / r.width;
+      var px = (ev.clientX - r.left) * sc, py = (ev.clientY - r.top) * sc;
+      var j = Math.min(n - 1, Math.max(0, Math.floor((px - m.l) / (side / n))));
+      var i = Math.min(n - 1, Math.max(0, n - 1 - Math.floor((py - m.t) / (side / n))));
+      hot.setAttribute('x', X(k[j] - dk / 2)); hot.setAttribute('y', Y(k[i] + dk / 2)); hot.setAttribute('visibility', 'visible');
+      tp.innerHTML = '<b>XC00 ' + fmtNum(k[j], 1) + ', YC00 ' + fmtNum(k[i], 1) + ' mrad</b><br>transmission ' + (t[i][j] * 100).toFixed(1) + ' %';
+      tp.hidden = false; placeTip(tp, host, px / sc, py / sc);
+    });
+    hit.addEventListener('pointerleave', function () { tp.hidden = true; hot.setAttribute('visibility', 'hidden'); });
+  }
+
+  // ---------- beamline strips ----------
+  function strip(id, z1, items, h) {
+    var host = document.getElementById(id);
+    var W = 1000, H = h, x0 = 34, x1 = 966, base = H - 34, axisY = H - 16;
+    var X = lin([0, z1], [x0, x1]);
+    var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, 'aria-hidden': 'true' });
+    var ly = 0.42 * (base) + 6;
+    el('line', { 'class': 'bl-line', x1: x0, x2: x1, y1: ly, y2: ly }, svg);
+    items.forEach(function (it) {
+      var x = X(it.z);
+      if (it.kind === 'box') el('rect', { 'class': 'bl-box', x: X(it.z0), y: ly - 15, width: X(it.z1) - X(it.z0), height: 30, rx: 3 }, svg);
+      else if (it.kind === 'fill') el('rect', { 'class': 'bl-el', x: X(it.z0), y: ly - 12, width: Math.max(4, X(it.z1) - X(it.z0)), height: 24, rx: 2 }, svg);
+      else if (it.kind === 'plane') el('line', { 'class': 'bl-plane', x1: x, x2: x, y1: ly - 20, y2: ly + 20 }, svg);
+      else if (it.kind === 'iris') { el('rect', { 'class': 'bl-el', x: x - 2.5, y: ly - 18, width: 5, height: 14 }, svg); el('rect', { 'class': 'bl-el', x: x - 2.5, y: ly + 4, width: 5, height: 14 }, svg); }
+      else if (it.kind === 'quad') el('rect', { 'class': 'bl-el', x: x - 4, y: ly - 13, width: 8, height: 26, rx: 2 }, svg);
+      else if (it.kind === 'rough') el('rect', { 'class': 'bl-rough', x: x - 5, y: ly - 5, width: 10, height: 10, transform: 'rotate(45 ' + x + ' ' + ly + ')' }, svg);
+      else if (it.kind === 'zoom') el('rect', { 'class': 'bl-zoom', x: X(it.z0) - 4, y: ly - 26, width: X(it.z1) - X(it.z0) + 8, height: 52, rx: 4 }, svg);
+      if (it.t) {
+        var up = it.pos === 'up', yy = up ? ly - 30 : ly + 36;
+        var anchor = it.anchor || 'middle';
+        el('text', { 'class': it.hi ? 'bl-text' : 'bl-text', x: it.tx != null ? X(it.tx) : x, y: yy, 'text-anchor': anchor }, svg, it.t);
+        if (it.s) el('text', { 'class': 'bl-sub', x: it.tx != null ? X(it.tx) : x, y: yy + (up ? -14 : 14), 'text-anchor': anchor }, svg, it.s);
+      }
+    });
+    el('line', { 'class': 'bl-axis', x1: x0, x2: x1, y1: axisY, y2: axisY }, svg);
+    var step = z1 > 2 ? 1 : 0.2;
+    for (var v = 0; v <= z1 + 1e-9; v += step) {
+      el('line', { 'class': 'bl-tick', x1: X(v), x2: X(v), y1: axisY - 4, y2: axisY + 4 }, svg);
+      el('text', { 'class': 'bl-sub', x: X(v) + 4, y: axisY + 14 }, svg, (Math.round(v * 10) / 10) + (v === 0 ? ' m' : ''));
+    }
+    host.appendChild(svg);
+  }
+  strip('bl-full', 4.8, [
+    { kind: 'zoom', z0: 0, z1: 1.2, z: 0.6, t: 'gun end, zoomed below', pos: 'up', tx: 0.6 },
+    { kind: 'plane', z: 1.499, t: 'Sample 1', s: '1.499 m', pos: 'down' },
+    { kind: 'rough', z: 1.85, t: '03', pos: 'up' },
+    { kind: 'quad', z: 2.03 }, { kind: 'quad', z: 2.10, t: 'QD01/QF01', s: '≈2.03 / 2.10', pos: 'up', tx: 1.98, anchor: 'start' },
+    { kind: 'plane', z: 2.487, t: 'Sample 2', s: '2.487 m', pos: 'down' },
+    { kind: 'rough', z: 2.85, t: '04', pos: 'up' },
+    { kind: 'plane', z: 3.988, t: 'THz chamber', s: '3.988 m', pos: 'down' },
+    { kind: 'plane', z: 4.631, t: 'ANDOR1', s: '4.631 m', pos: 'down' },
+    { kind: 'rough', z: 4.75, t: '05', pos: 'up' }
+  ], 150);
+  strip('bl-zoom', 1.2, [
+    { kind: 'fill', z0: 0, z1: 0.106, z: 0.053, t: 'RF gun', s: '0–0.106', pos: 'up' },
+    { kind: 'box', z0: 0.10, z1: 0.29, z: 0.196, t: 'Gun solenoid', s: 'peak 0.196', pos: 'down' },
+    { kind: 'rough', z: 0.33, t: 'XC/YC00', s: '0.33', pos: 'up' },
+    { kind: 'rough', z: 0.50, t: 'FC + Diag YAG', s: '0.50', pos: 'down' },
+    { kind: 'iris', z: 0.5575, t: 'Collimator', s: '0.5575', pos: 'up', tx: 0.575 },
+    { kind: 'rough', z: 0.65, t: 'XC/YC01', s: '0.65', pos: 'down', tx: 0.67 },
+    { kind: 'box', z0: 0.973, z1: 1.037, z: 1.005, t: 'Solenoid 2', s: '1.005', pos: 'up' },
+    { kind: 'rough', z: 1.10, t: 'XC/YC02', s: '1.10', pos: 'down' }
+  ], 150);
+
+  // ---------- ramp charts ----------
+  var order = ['nominal', 'water_fault', 'afb_trip'];
+  var names = { nominal: 'nominal', water_fault: 'cooling-water fault', afb_trip: 'feedback trip' };
+  legend('ramp-legend', order.map(function (k) { return names[k]; }));
+  function rampSeries(q) {
+    return order.map(function (k) {
+      var tr = D.ramp_traces[k];
+      return { name: names[k], x: tr.map(function (r) { return r.t / 60; }), y: tr.map(function (r) { return r[q]; }) };
+    });
+  }
+  lineChart('ch-areq', {
+    series: rampSeries('areq'), xd: [0, 10.5], yd: [0, 0.56], height: 230, snap: 0.05,
+    xl: 'time (min, simulated)', yl: 'AREQ', fx: function (v) { return fmtNum(v, 0); }, fy: function (v) { return v.toFixed(1); },
+    tx: function (v) { return 't = ' + v.toFixed(2) + ' min'; }, ty: function (v) { return v.toFixed(3); },
+    aria: 'AREQ setpoint against simulated time for the three scenarios'
+  });
+  lineChart('ch-temp', {
+    series: rampSeries('temp'), xd: [0, 10.5], yd: [32.5, 38], height: 230, snap: 0.05,
+    hlines: [{ y: 37, t: '37 °C' }, { y: 33, t: '33 °C' }],
+    xl: 'time (min, simulated)', yl: 'temperature (°C)', fx: function (v) { return fmtNum(v, 0); }, fy: function (v) { return v.toFixed(0); },
+    tx: function (v) { return 't = ' + v.toFixed(2) + ' min'; }, ty: function (v) { return v.toFixed(2) + ' °C'; },
+    aria: 'Gun body temperature against simulated time for the three scenarios'
+  });
+
+  // ---------- gun amplitude charts ----------
+  var G = D.gun_amp;
+  lineChart('ch-ke', {
+    series: [{ x: G.areq, y: G.KE_MeV }], xd: [0, 0.56], yd: [0, 3.3], markers: true,
+    xl: 'AREQ (assumed 128.3 MV/m per unit)', yl: 'kinetic energy (MeV)',
+    fx: function (v) { return v.toFixed(1); }, fy: function (v) { return v.toFixed(1); },
+    tx: function (v) { return 'AREQ ' + v.toFixed(2) + ' (' + (v * 128.3).toFixed(1) + ' MV/m)'; }, ty: function (v) { return v.toFixed(3) + ' MeV'; },
+    aria: 'Beam kinetic energy against AREQ'
+  });
+  lineChart('ch-tr', {
+    series: [{ x: G.areq, y: G.transmission_pct }], xd: [0, 0.56], yd: [0, 105], markers: true,
+    xl: 'AREQ (assumed 128.3 MV/m per unit)', yl: 'transmission (%)',
+    fx: function (v) { return v.toFixed(1); }, fy: function (v) { return v.toFixed(0); },
+    tx: function (v) { return 'AREQ ' + v.toFixed(2); }, ty: function (v) { return v.toFixed(1) + ' %'; },
+    aria: 'Collimator transmission against AREQ'
+  });
+  var tb = document.getElementById('tbl-amp');
+  var head = '<thead><tr><th class="num">AREQ</th><th class="num">Field <span class="u">(MV/m)</span></th><th class="num">KE <span class="u">(MeV)</span></th><th class="num">Transmission</th><th class="num"><span class="u">σ<sub>x</sub></span> at sample 1 <span class="u">(µm)</span></th><th class="num"><span class="u">σ<sub>t</sub></span> at sample 1 <span class="u">(fs)</span></th></tr></thead><tbody>';
+  tb.innerHTML = head + G.areq.map(function (a, i) {
+    return '<tr><td class="num">' + a.toFixed(2) + '</td><td class="num">' + G.gun_MV_per_m[i].toFixed(1) + '</td><td class="num">' + G.KE_MeV[i].toFixed(3) +
+      '</td><td class="num">' + G.transmission_pct[i].toFixed(1) + ' %</td><td class="num">' + Math.round(G.sx_sample_um[i]).toLocaleString('en-US') +
+      '</td><td class="num">' + Math.round(G.st_sample_fs[i]).toLocaleString('en-US') + '</td></tr>';
+  }).join('') + '</tbody>';
+
+  // ---------- collimator charts ----------
+  var S = D.coll_summary;
+  heatmap('ch-map', D.coll_map.k, D.coll_map.t, [
+    { kind: 'o', x: 0, y: 0, t: 'start' },
+    { kind: 'p', x: S.xc00_yc00_mrad[0], y: S.xc00_yc00_mrad[1], t: 'found', dy: 16 }
+  ]);
+  var pn = ['start', 'after XC/YC00', 'after XC/YC01'];
+  legend('prof-legend', pn);
+  function prof(q) {
+    return ['start', 'after_xc00', 'final'].map(function (k, i) {
+      var p = D.coll_profiles[k];
+      return { name: pn[i], x: p.z, y: p[q].map(function (v) { return v == null ? NaN : v; }) };
+    });
+  }
+  var pyd = [-3400, 600];
+  ['x', 'y'].forEach(function (a) {
+    lineChart('ch-p' + a, {
+      series: prof(a + '_um'), xd: [0, 4.7], yd: pyd, height: 190, snap: 0.03,
+      vlines: [{ x: 4.631, t: 'ANDOR1' }, { x: 1.499, t: 'sample 1' }],
+      xl: 'z (m)', yl: 'centroid ' + a + ' (µm)', fx: function (v) { return v.toFixed(0); }, fy: function (v) { return fmtNum(v, 0); },
+      tx: function (v) { return 'z = ' + v.toFixed(3) + ' m'; }, ty: function (v) { return fmtNum(v, 0) + ' µm'; },
+      aria: 'Beam centroid ' + a + ' along the beamline for the three steps'
+    });
+  });
+})();
+</script>
+</body>
+</html>

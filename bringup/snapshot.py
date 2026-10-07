@@ -17,22 +17,34 @@ import time
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from epics import caget  # noqa: E402  (read-only: caput is never imported)
+from epics import caget_many  # noqa: E402  (read-only: no caput imported)
 
 from ued_pvs import CHANNELS  # noqa: E402
 
 TIMEOUT = 2.0
 
 
+def _read(pvs):
+    """Read PVs in parallel: one connection timeout in total, not per PV.
+
+    Acquire_RBV is an enum, read as its label ("Acquiring"/"Done").
+    pyepics prints "cannot connect" on stdout; keep stdout clean for --json.
+    """
+    enums = [pv for pv in pvs if pv.endswith(':Acquire_RBV')]
+    plain = [pv for pv in pvs if pv not in enums]
+    with contextlib.redirect_stdout(sys.stderr):
+        vals = dict(zip(plain, caget_many(plain, timeout=TIMEOUT)))
+        if enums:
+            vals.update(zip(enums, caget_many(enums, as_string=True,
+                                              timeout=TIMEOUT)))
+    return vals
+
+
 def read_all():
+    vals = _read([pv for ch in CHANNELS for pv in ch.readback])
     rows = []
     for ch in CHANNELS:
-        # Acquire_RBV is an enum: read it as its label ("Acquiring"/"Done").
-        # pyepics prints "cannot connect" on stdout; keep stdout clean.
-        with contextlib.redirect_stdout(sys.stderr):
-            values = [caget(pv, timeout=TIMEOUT,
-                            as_string=pv.endswith(':Acquire_RBV'))
-                      for pv in ch.readback]
+        values = [vals[pv] for pv in ch.readback]
         rows.append({
             'key': ch.key, 'group': ch.group, 'desc': ch.desc,
             'pv': ch.pv, 'old_pv': ch.old_pv, 'status': ch.status,

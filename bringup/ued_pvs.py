@@ -2,7 +2,8 @@
 
 Each entry pairs the PV used by Fuhao Ji's ued_run4 scripts (old_pv) with
 its current counterpart on the UED controls network, plus how sure the
-mapping is. Survey done 2026-10-01 on ued-daq with caget only.
+mapping is. Survey done 2026-10-01 on ued-daq with caget only; updated
+2026-10-05 with Fuhao's layout sketch and the gun ramp script ramp_rf.py.
 
 Status values:
   CONFIRMED  new PV found, its DESC/IOC alias names the same device
@@ -10,6 +11,7 @@ Status values:
   CANDIDATE  one of several plausible PVs; needs an expert to pick
   UNMAPPED   no current PV found for the old device
   NO_ACCESS  accelerator PV, not reachable over Channel Access from ued-daq
+             (ramp_rf.py runs on testfac-srv01, where they are reachable)
 """
 from __future__ import annotations
 
@@ -91,10 +93,13 @@ CHANNELS = [
            'ASTA:SMAR02:M1:MOTOR', 'mm', CANDIDATE,
            'DAQ archive calls it Sample_relative_X, DESC says Charge Guard'),
 
-    # Beamline devices
+    # Beamline devices. Order along the beam (kicker sketch): gun, gun
+    # solenoid, XC/YC00, Faraday cup + Diag YAG, collimator, XC/YC01, ...
     _motor('collimator', 'beamline', 'Collimator', 'UED:USR:MMN:14:07',
            'MOTR:AS01:MC03:CH7:MOTOR', 'mm', CONFIRMED,
            'old "inserted" = 93 mm on the old controller'),
+    _value('faraday_cup', 'beamline', 'Faraday cup, before collimator', None,
+           None, '', UNMAPPED, 'shares a holder with the Diag YAG (sketch)'),
     _value('far_phosphor', 'beamline', 'Far-detector phosphor in/out', None,
            'ASTA:BO:2114-9:BIT2', '', UNMAPPED),
     _value('chamber_light', 'beamline', 'Sample chamber light', None,
@@ -104,34 +109,59 @@ CHANNELS = [
     # Cameras (old areaDetector prefixes had a :cam1 segment, new ones don't)
     _camera('cam_vcc', 'VCC (virtual cathode)', 'UED:GIGE:06', 'ASPS05',
             CONFIRMED),
-    _camera('cam_sample_yag', 'Sample-plane YAG', 'UED:GIGE:09', 'ASPS04',
-            CANDIDATE, 'GIGE:09 "DIAG YAG"; or GIGE:12 THz Sample, '
-            'GIGE:13 Beamline Viewing'),
+    _camera('cam_diag_yag', 'Diag YAG, before collimator', 'UED:GIGE:09',
+            None, LIKELY, 'IOC alias "DIAG YAG"; sketch puts the Diag YAG '
+            'with the Faraday cup upstream of the collimator'),
+    _camera('cam_sample_yag', 'Sample-plane YAG', 'UED:GIGE:13', 'ASPS04',
+            CANDIDATE, 'GIGE:13 Beamline Viewing or GIGE:12 THz Sample'),
     _camera('cam_far_andor', 'Far-detector Andor EMCCD', 'UED:ANDOR:CAM:03',
             'ANDOR1', LIKELY, 'archived by the DAQ; ANDOR:CAM:01 is down'),
 
-    # Accelerator (AS01). Old names still appear in the current DAQ lists,
-    # but none of them answer from ued-daq.
-    _value('gun_amp_req', 'accelerator', 'Gun amplitude request',
-           'SIOC:AS01:KY01:0:AREQ', 'SIOC:AS01:KY01:0:AREQ', '', NO_ACCESS),
-    _value('gun_phase_req', 'accelerator', 'Gun phase request',
-           'SIOC:AS01:KY01:0:PREQ', 'SIOC:AS01:KY01:0:PREQ', 'deg',
-           NO_ACCESS),
-    _value('gun_amp_avg', 'accelerator', 'Gun amplitude, averaged',
+    # Gun RF (klystron KY03 since run 4's KY01; names from ramp_rf.py)
+    _value('gun_amp_req', 'gun_rf', 'Gun amplitude setpoint AREQ',
+           'SIOC:AS01:KY03:0:AREQ', 'SIOC:AS01:KY01:0:AREQ', '', NO_ACCESS,
+           'operating 0.53; ramp starts at 0.05 (ramp_rf.py)'),
+    _value('gun_phase_req', 'gun_rf', 'Gun phase setpoint PREQ',
+           'SIOC:AS01:KY03:0:PREQ', 'SIOC:AS01:KY01:0:PREQ', 'deg',
+           NO_ACCESS, 'KY03 name inferred from AREQ'),
+    _value('gun_amp_avg', 'gun_rf', 'Gun amplitude readback, averaged',
            'SIOC:AS01:KY03:0:AACT_AVGNT', None, '', NO_ACCESS,
            'listed in the current DAQ epicsArch'),
-    _value('rep_rate', 'accelerator', 'E-beam repetition rate',
+    _value('gun_pfb_enable', 'gun_rf', 'Phase feedback enable',
+           'SIOC:AS01:KY03:0:PFBENB', None, '', NO_ACCESS),
+    _value('gun_afb_enable', 'gun_rf', 'Amplitude feedback enable',
+           'SIOC:AS01:KY03:0:AFBENB', None, '', NO_ACCESS),
+    _value('gun_pfb_status', 'gun_rf', 'Phase feedback status',
+           'SIOC:AS01:KY03:0:PFBST', None, '', NO_ACCESS),
+    _value('gun_afb_status', 'gun_rf', 'Amplitude feedback status',
+           'SIOC:AS01:KY03:0:AFBST', None, '', NO_ACCESS,
+           'ramp_rf.py expects the string Active'),
+    _value('gun_temp', 'gun_rf', 'Gun body temperature',
+           'APC:AS01:TM01:M2_CH2_SPARE', 'APC:AS01:TM01:M2_CH2_SPARE', 'C',
+           NO_ACCESS, 'ramp holds outside 33..37 C'),
+    _value('rep_rate', 'gun_rf', 'E-beam repetition rate',
            'KLYS:AS01:1:PulseRepetitionFreq', None, 'Hz', NO_ACCESS,
            'listed in the current DAQ epicsArch'),
-    _value('sol1', 'accelerator', 'Gun solenoid readback',
+
+    # Magnets (old run-4 names; not yet seen in any current list)
+    _value('sol1', 'magnets', 'Gun solenoid readback',
            'SOLN:AS01:121:BACT', 'SOLN:AS01:121:BACT', '', NO_ACCESS),
-    _value('sol2', 'accelerator', '2nd solenoid readback',
+    _value('sol2', 'magnets', '2nd solenoid readback',
            'SOLN:AS01:311:BACT', 'SOLN:AS01:311:BACT', '', NO_ACCESS),
-    _value('quad1', 'accelerator', 'Quad doublet Q1 readback',
+    _value('quad1', 'magnets', 'Quad doublet QD01 readback',
            'QUAD:AS01:361:BACT', 'QUAD:AS01:361:BACT', '', NO_ACCESS),
-    _value('quad2', 'accelerator', 'Quad doublet Q2 readback',
-           'QUAD:AS01:371:BACT', 'QUAD:AS01:371:BACT', '', NO_ACCESS,
-           'plus 10 correctors X/YCOR:AS01:* in ued_run4/PVnamelist.py'),
+    _value('quad2', 'magnets', 'Quad doublet QF01 readback',
+           'QUAD:AS01:371:BACT', 'QUAD:AS01:371:BACT', '', NO_ACCESS),
+] + [
+    # Correctors XC/YC00..04: unit numbers rise along the beam like the
+    # solenoids' (121 at the gun solenoid, 311 at solenoid 2). XC/YC05 is
+    # in the sketch but not in the run-4 list.
+    _value(f'{p.lower()}c{i:02d}', 'correctors', f'{p}C{i:02d} kicker',
+           f'{p}COR:AS01:{u}:BCTRL', f'{p}COR:AS01:{u}:BCTRL', '',
+           NO_ACCESS)
+    for i, (ux, uy) in enumerate([(121, 122), (221, 222), (321, 322),
+                                  (341, 342), (381, 382)])
+    for p, u in (('X', ux), ('Y', uy))
 ]
 
 BY_KEY = {c.key: c for c in CHANNELS}

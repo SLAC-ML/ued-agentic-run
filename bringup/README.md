@@ -4,6 +4,7 @@ This folder starts from Fuhao Ji's `ued_run4` scripts (GUED run 4, Nov–Dec 202
 
 - `ued_pvs.py`: the PV map. Each run-4 PV is paired with its current PV, with a status: CONFIRMED, LIKELY, CANDIDATE, UNMAPPED or NO_ACCESS.
 - `snapshot.py`: a read-only beamline snapshot built on that map. It replaces `PVtest_run4.py`; `--json` gives machine-readable output.
+- `gun_ramp.py`: the gun RF ramp-up procedure, ported from `ramp_rf.py`. It has two extra checks: the feedbacks must stay Active, and the amplitude readback must track the setpoint. It drives a backend, which for now is only the simulator in [`sim/virtual_gun.py`](../sim/README.md). There is no machine backend.
 
 Run it on `ued-daq`. S3DF is mounted there, so nothing has to be copied over:
 
@@ -63,7 +64,7 @@ All positions are in old controller units. Positions need re-teaching on the new
 
 - `setup_env.sh` provides `caget`, `cainfo` and pyepics (EPICS 7). With the default settings, hutch PVs (`UED:*`) respond.
 - Accelerator PVs (`*:AS01:*`: gun RF, solenoids, quads, correctors, rep rate) don't respond from `ued-daq`. I tried the default setup, the address list in `/cds/group/pcds/setup/ued_setup.sh` (`172.21.36.255:5064 172.27.99.255:5058`), and PV Access. This includes PVs the current DAQ still lists.
-- Current PV names can be found in three places:
+- Current PV names can be found in four places:
   - `/cds/group/pcds/pyps/config/ued/iocmanager.cfg`, the IOCs with readable aliases.
   - `/cds/data/iocData/<ioc>/iocInfo/IOC.pvlist`, the full PV list of each IOC.
   - `/cds/group/pcds/dist/pds/ued/misc/epicsArch*.txt`, the PVs the DAQ records, with descriptions.
@@ -71,9 +72,17 @@ All positions are in old controller units. Positions need re-teaching on the new
 
 ## Open questions
 
-1. How should accelerator PVs (`AS01`) be reached now? Through a different host or a gateway?
-2. Which axis is the pump energy control: `MMN:05:03` (527 nm HWP), `MMN:05:02` (harmonics HWP), or the new pump throttle `MMN:08:01`?
-3. Is XPS-04 the sample stage? Which "Sample Y" is right, `MMN:04:07` or `MMN:04:01`? Is `UED:MCS2:03:m1` the relative X? Its description says "Charge Guard".
-4. Which camera views the sample-plane YAG: `UED:GIGE:09` (DIAG YAG), `:12` (THz Sample) or `:13` (Beamline Viewing)?
-5. What voltages do the Beckhoff shutter outputs use for open and closed? All read 0 V now.
-6. Which PVs control the far-detector phosphor and the chamber light? And what do the PLC axes `UED:UM1:MMS:01–08` drive? They have no descriptions.
+Fuhao's layout sketch and the gun ramp script (`assets/layout/`, `assets/gun_ramp_up/`) answered part of the original list.
+
+1. **Accelerator PVs (`AS01`):** partly answered. `ramp_rf.py` runs as `tfprod@testfac-srv01`, so gun RF, magnets and correctors are reached from there, not from `ued-daq`. The gun RF moved to klystron `KY03`. Still open: should agents get read access to those PVs, and through which route?
+2. **Pump energy control:** still open. Is it `MMN:05:03` (527 nm HWP), `MMN:05:02` (harmonics HWP), or the new pump throttle `MMN:08:01`?
+3. **Sample stage:** still open. Is XPS-04 the sample stage? Which "Sample Y" is right, `MMN:04:07` or `MMN:04:01`? Is `UED:MCS2:03:m1` the relative X? Its description says "Charge Guard".
+4. **Sample-plane camera:** partly answered. The sketch puts the Diag YAG together with the Faraday cup just before the collimator. So `UED:GIGE:09` ("DIAG YAG") is that upstream screen, not the sample-plane YAG. That leaves `:13` (Beamline Viewing) or `:12` (THz Sample).
+5. **Shutter voltage levels:** still open. What voltages do the Beckhoff shutter outputs use for open and closed? All read 0 V now.
+6. **Phosphor, chamber light, Faraday cup:** partly answered. The Faraday cup sits with the Diag YAG before the collimator; its PV is still unknown. Which PVs control the far-detector phosphor and the chamber light? What do the PLC axes `UED:UM1:MMS:01–08` drive? They might be the inserters around the collimator.
+7. **Gun ramp details (new):**
+   - The AREQ → MV/m calibration, and whether 0.53 is the deck's 68 MV/m.
+   - Archived AREQ, AACT and gun temperature from a few past ramps, to calibrate the virtual gun.
+   - The string values `PFBST` and `AFBST` take, other than `Active`.
+   - The PVs for modulator mode and HV (TRIG, VoltSet = 980 V), so the preconditions can be checked instead of assumed.
+8. **Correctors (new):** do `X/YCOR:AS01:121…382:BCTRL` still exist (seen from `testfac-srv01`)? What are their units and kick per unit? What's the PV for XC/YC05?

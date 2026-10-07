@@ -5,7 +5,8 @@ This repo has two parts: running UED beamline simulations with GPT (General Part
 ## What's in here
 
 - `s3df/`: the scripts we use on S3DF. They set up the environment, run GPT (by hand or as a Slurm job), and sanity-check the output. [s3df/README.md](s3df/README.md) has the details.
-- `bringup/`: tools for the real beamline, starting from Fuhao's 2023 run-4 automation scripts. So far there's a map from the old PVs to today's PVs, and a read-only snapshot of the beamline state. [bringup/README.md](bringup/README.md) has the details and the open questions.
+- `bringup/`: tools for the real beamline, starting from Fuhao's 2023 run-4 automation scripts. So far there's a map from the old PVs to today's PVs, a read-only snapshot of the beamline state, and the gun ramp-up procedure (simulator only for now). [bringup/README.md](bringup/README.md) has the details and the open questions.
+- `sim/`: GPT simulations of the bring-up stages. There's a beamline deck with all the steering kickers, a Python runner for scans, and one script per stage: gun ramp-up and collimator alignment so far. [sim/README.md](sim/README.md) has the details.
 - `assets/`: the raw files from collaborators: the GPT Linux build and license, the `UED_May2025` deck and field maps, and the analysis notebook. It's big and licensed, so it's not in git. The S3DF folder below has a copy of everything.
 
 ## The S3DF side
@@ -17,6 +18,7 @@ sw/            GPT 3.43 (Linux build)
 .venv/         Python env for analysis (numpy, pandas, matplotlib, jupyter)
 scripts/       copy of s3df/ from this repo
 bringup/       copy of bringup/ from this repo
+sim/           copy of sim/ from this repo
 UED_May2025/   the deck + field maps, left untouched
 runs/          one folder per run, plus the Slurm logs
 pv_survey/     raw PV survey dumps from ued-daq
@@ -56,4 +58,5 @@ Edit them here, then push them over:
 ```bash
 rsync -av s3df/ iana:/sdf/group/mli/zhezhang/ued/agentic/scripts/
 rsync -av bringup/ iana:/sdf/group/mli/zhezhang/ued/agentic/bringup/
+rsync -av sim/ iana:/sdf/group/mli/zhezhang/ued/agentic/sim/
 ```

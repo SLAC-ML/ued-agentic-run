@@ -1,0 +1,101 @@
+################ UED bring-up deck ####################################
+# Based on UED_beamline.in (Fuhao Ji, 05/27/2025), with steering correctors,
+# a cathode-spot offset and screens at the SSUED schematic planes.
+#
+# Every tunable is set on the command line (gpt ... name=value); none are
+# defined here. gptsim.py holds the defaults and passes all of them:
+#   numParticle Qtot radius sc        beam and space charge (sc=1 on)
+#   gunAmp gunPhaseDeg                gun field [V/m] and phase [deg]
+#   sol1Fac sol2Fac                   solenoid scale factors
+#   x0 y0                             cathode spot offset [m]
+#   xc00 yc00 ... xc05 yc05           corrector kicks [mrad at 3.098 MeV]
+#   gq1 gq2                           quad doublet gradients [T/m]
+#   dz zstop                          extra screens every dz up to zstop
+#                                     (dz=0: only the fixed screens)
+#
+# Positions [m from cathode]. Gun, solenoids and collimator are from the
+# May 2025 deck. Chambers and detectors are from the SSUED schematic
+# (inches). Correctors and quads are rough, from the kicker sketch.
+
+accuracy(6);
+
+############## Initial beam (unchanged from UED_beamline.in) ##########
+sigmaT = 60e-15/2.35;            # 60 fs FWHM laser pulse
+E0 = 0.767*0.46*0.46;            # 0.46 mm-mrad/mm intrinsic emittance
+G = 1+|qe|*E0/(m*c*c);
+GB = sqrt(G^2-1);
+
+setparticles("beam",numParticle,me,qe,Qtot);
+settdist("beam", "g", 0, sigmaT, 5, 5);
+setrxydist("beam", "s", 0, radius);
+setphidist("beam", "u", 0, 2*pi);
+setGBzdist("beam", "u", GB, 0);
+setGBthetadist("beam", "u", pi/4, pi/2);
+setGBphidist("beam", "u", 0, 2*pi);
+setrmacrodist("beam", "u", 4e-10, 0);
+
+# Laser spot offset on the cathode (misalignment knob)
+settransform("wcs", x0,y0,0, 1,0,0, 0,1,0, "beam");
+
+if (sc != 0) spacecharge3Dmesh("Cathode");
+
+################ S-band RF gun (1.6 cell) ############################
+gunFreq = 2*pi*2.856e9;
+gunPhase = (gunPhaseDeg-90)/180*pi;
+map1D_TM("wcs", "I", "gun1Dmap.gdf", "z", "Ez", gunAmp, gunPhase, gunFreq);
+
+################ Solenoids ##########################################
+sol1B = sol1Fac/1.949;           # gun solenoid, peak at 0.196 m
+map1D_B("wcs", "z", 0.0, "gunSolenoid_v0_bucking.gdf", "z", "Bz", sol1B);
+sol2B = sol2Fac/12*0.385;        # micro-focusing solenoid
+map1D_B("wcs", "z", 1.005, "nano_ued_solenoid.gdf", "z", "Bz", sol2B);
+
+################ Collimator (100 um hole) ###########################
+forwardscatter("wcs", "I", "remove", 0);
+scatteriris("wcs", "z", 0.5575, 47e-6, 1) scatter="remove";
+
+################ Steering correctors ################################
+# Bmultipole dipole component, 5 cm long. The kick is an angle at the
+# nominal 3.098 MeV, so a beam of another energy is kicked by p_nom/p.
+# Horizontal: dipole as given (field along y). Vertical: same element
+# rotated 90 deg about z. A positive value steers the beam to +x / +y.
+Lk = 0.05;
+bk = 2/0.03;                     # Enge fringe coefficient, ~3 cm gap
+Brho = sqrt((1+3.098e6*|qe|/(m*c*c))^2-1)*m*c/|qe|;
+kB = 1e-3*Brho/Lk;               # field [T] per mrad
+
+zc00 = 0.33;                     # after the gun solenoid
+zc01 = 0.65;                     # after the collimator
+zc02 = 1.10;                     # after solenoid 2
+zc03 = 1.85;                     # after the 1st sample chamber
+zc04 = 2.85;                     # after the 2nd sample chamber
+zc05 = 4.75;                     # after ANDOR1
+
+Bmultipole("wcs","z",zc00, Lk, xc00*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs",0,0,zc00, 0,1,0, -1,0,0, Lk, yc00*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs","z",zc01, Lk, xc01*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs",0,0,zc01, 0,1,0, -1,0,0, Lk, yc01*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs","z",zc02, Lk, xc02*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs",0,0,zc02, 0,1,0, -1,0,0, Lk, yc02*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs","z",zc03, Lk, xc03*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs",0,0,zc03, 0,1,0, -1,0,0, Lk, yc03*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs","z",zc04, Lk, xc04*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs",0,0,zc04, 0,1,0, -1,0,0, Lk, yc04*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs","z",zc05, Lk, xc05*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+Bmultipole("wcs",0,0,zc05, 0,1,0, -1,0,0, Lk, yc05*kB,0,bk, 0,0,1, 0,0,1, 0,0,1);
+
+################ Quad doublet QD01 / QF01 ###########################
+# Between the two sample chambers (orange in the schematic), 5 cm long.
+if (gq1 != 0) quadrupole("wcs", "z", 2.03, 0.05, gq1);
+if (gq2 != 0) quadrupole("wcs", "z", 2.10, 0.05, gq2);
+
+################ Screens ############################################
+screen("wcs", "I", 0.50);        # Faraday cup / Diag YAG, before collimator
+screen("wcs", "I", 0.80);        # after collimator (past the step artefact)
+screen("wcs", "I", 1.499);       # Cryo & Quantum Materials chamber (59.025")
+screen("wcs", "I", 2.487);       # Single-Shot & High Temp. chamber (97.895")
+screen("wcs", "I", 3.988);       # THz diagnostic chamber (157.020")
+screen("wcs", "I", 4.631);       # ANDOR1 diffraction detector (182.332")
+# Optional fine screens, offset by dz/2 so none lands on a fixed screen
+# (gdfa groups by position: a duplicate z would double-count charge)
+if (dz > 0) screen("wcs", "I", dz/2, zstop, dz);
