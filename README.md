@@ -51,6 +51,19 @@ python /sdf/group/mli/zhezhang/ued/agentic/bringup/snapshot.py --json   # for ag
 
 The hutch PVs (`UED:*`) read fine from there. The accelerator PVs (gun RF, magnets) don't answer from `ued-daq` yet.
 
+### The agent on ued-daq
+
+The Osprey agent for UED lives in its own repo at `/sdf/group/mli/zhezhang/OspreyDeployments/UED`. It's built on S3DF and runs on `ued-daq` straight from there, with nothing copied over. It talks to the SLAC AI gateway directly and is read-only on the machine, with five separate guards against PV writes.
+
+```bash
+ssh ued-daq   # no setup_env.sh needed; the launcher sets up its own environment
+L=/sdf/group/mli/zhezhang/OspreyDeployments/UED/deploy/ued/launch_ued.sh
+$L chat --print ping   # quick check
+$L web                 # web terminal; from a laptop: ssh -L 10102:127.0.0.1:10100 ued-daq
+```
+
+Its `deploy/ued/README.md` covers building, the one-time workspace trust, the network routes and the write guards.
+
 ## Changing the scripts
 
 Edit them here, then push them over:
