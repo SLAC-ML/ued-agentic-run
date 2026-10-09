@@ -1,0 +1,5 @@
+#!/bin/sh
+# Refusing shim: the UED agent deployment never writes PVs on ued-daq.
+# First on PATH via deploy/ued/launch_ued.sh — one of four write-safety layers.
+echo "pvput refused: this UED agent deployment is read-only on ued-daq. Read with caget; leave writes to the operator." >&2
+exit 1

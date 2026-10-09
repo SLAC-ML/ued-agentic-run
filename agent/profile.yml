@@ -1,0 +1,439 @@
+# Ued — OSPREY deployment repo
+#
+# This file is your assistant's settings. Edit it, then run `osprey build`.
+#
+#   +--------------+  osprey   +--------------+  osprey  +----------------+
+#   |    SOURCE    |  build    |    build/    |    up    |   DEPLOYMENT   |
+#   | profile.yml  +---------->| config.yml   +--------->| agent CLI/web  |
+#   | data/  ...   |           | .mcp.json  … |          | + containers   |
+#   +--------------+           +--------------+          +----------------+
+#          ^                                                     |
+#          +---- edit -> osprey build -> osprey up --------------+
+#
+#   SOURCE   yours to edit, kept in git: this file, data/, personas/
+#   SECRETS  .env, your API keys. Not in git. Rebuilds never touch it
+#   OUTPUT   build/, generated. Never edit it; deleting it is safe
+#   STATE    var/, the agent's memory and audit log. Not in git. Kept
+#
+# Made from the bundled `hello-world` preset. Everything it sets is written
+# out below and is yours to edit. Nothing is hidden or inherited.
+#
+#   emitted by OSPREY 2026.6.2.post2414+gdb395638e
+#   preset content hash: sha256:fdd41e470ce46d49f206640e558eaab9e909ce034b6bcc456ff50e3edb1e0436
+
+# DEVIATION: the facility's own spelling (init title-cased the folder name)
+name: UED
+
+# Which packaged app this builds. "hello_world" is the small one: a project
+# skeleton and config, with no channel databases, logbook, or benchmark data.
+app_template: hello_world
+
+# Which model answers. `osprey set provider=...` / `osprey set model=...` edit
+# these in place, keeping your comments.
+provider: slac
+model: haiku   # tier (haiku/sonnet/opus), or any model ID the provider serves
+
+# Any custom gateway works too: name it as the provider, describe it under
+# `config:` below, and put its key in this repo's .env — the variable name
+# derives from the provider name, <NAME>_API_KEY. Worked example:
+#
+# provider: my-gateway
+# config:
+#   api.providers.my-gateway.api_key: ${MY_GATEWAY_API_KEY}
+#   api.providers.my-gateway.base_url: https://my-gateway.example.com/v1
+#   # Optional — the gateway speaks Anthropic natively (e.g. a LiteLLM proxy
+#   # in Anthropic mode), so the local translation proxy is skipped:
+#   api.providers.my-gateway.api_protocol: anthropic
+#   # Optional tier map, model IDs as the gateway names them. Unmapped tiers
+#   # fall back to `model:` above, with a build-time warning:
+#   api.providers.my-gateway.models:
+#     haiku: claude-haiku-4-5
+#     sonnet: claude-sonnet-4-6
+#     opus: claude-opus-4-6
+
+# ── What the agent can do ────────────────────────────────────────────────────
+# Each entry is a name from the OSPREY artifact library. Delete what you do not
+# need; add your own through an overlay.
+
+hooks:
+  - hook-log       # Append every tool call to a structured JSONL audit log
+  - target-state   # Stdlib reader for the control-target state file (helper, not wired to an event)
+  - hook-config    # Inject project config.yml path into every tool call env
+  - error-guidance # Post-error hook that surfaces remediation hints
+  # The next three are the write-safety chain, and no write reaches the control
+  # system until all three agree. Removing any one of them removes a guard.
+  - writes-check   # Kill switch: refuse every write while writes_enabled is false
+  - approval       # Gate hardware-write tool calls on human approval prompt
+  - limits         # Enforce per-channel min/max limits, from data/channel_limits.json
+  - memory-guard   # Gate Write/MultiEdit to memory files, NotebookEdit to agent-data artifacts and notebooks
+  - config-drift   # Warn at session start when the build is out of date
+  - focus-validate # Strip stale artifact IDs from focus_state.txt on each prompt
+  - panels-context # Tell the agent which web terminal panels exist
+  - workspace-delta # Report web workspace changes since the agent's last turn
+  # Available — uncomment to enable:
+  # - cf-feedback-capture  # Channel finder feedback capture hook
+  # - notebook-update  # Notebook artifact update hook
+
+rules:
+  - safety          # Core safety rules: never write without approval
+  - error-handling  # Standard error handling and retry guidance
+  - timezone        # Always localise timestamps to facility timezone
+  # The `facility` rule is left out: mock channels have no naming scheme or
+  # units to teach. Add it once yours do.
+  # Available — uncomment to enable:
+  # - artifacts  # Artifact-first reuse rule
+  # - control-system-safety  # Control system safety rules (protocol-aware)
+  # - data-visualization  # Matplotlib and plot artifact conventions (rendered only when the data-visualizer agent is disabled)
+  # - python-execution  # Python auto-execution workflow
+  # - test-ioc-safety  # Test-IOC port isolation rules (rendered only for EPICS-family control systems)
+  # - workflows  # Task planning, agent delegation, and parallel execution
+
+# The three empty lists below are where a real deployment grows. Leaving them
+# empty keeps the interface small; control-assistant shows them filled in.
+
+skills: []   # Named workflows the agent can run on request
+  # Available — uncomment to enable:
+  # - bluesky-plans  # Index of the plans this deployment can run.
+  # - demo-gallery  # Artifact Gallery demo showcase skill
+  # - demo-ui  # Scripted web-workspace UI demonstration skill
+  # - diagnose  # OSPREY infrastructure failure diagnosis skill
+  # - logbook-deep-research  # Multi-phase logbook investigation skill
+  # - operating-bluesky-plans  # Stage, launch, and watch a registered Bluesky plan through the shared draft
+  # - session-report  # Session report generation skill
+  # - setup-mode  # Configuration diagnostic and troubleshooting skill
+  # - sim-scenarios  # List and switch simulated machine scenarios
+  # - writing-bluesky-plans  # Author, validate, and launch a session-tier Bluesky plan
+
+agents: []   # Sub-agents the main model can hand work to
+  # Available — uncomment to enable:
+  # - channel-finder  # Channel-finder sub-agent
+  # - data-visualizer  # Data visualization sub-agent
+  # - facility-knowledge  # Facility knowledge sub-agent
+  # - facility-knowledge-graph  # Facility knowledge graph sub-agent (structural Cypher queries)
+  # - logbook-deep-research  # Logbook deep-research sub-agent
+  # - logbook-search  # Logbook search sub-agent
+  # - pyat-specialist  # Lattice/optics computation sub-agent (pyAT)
+
+output_styles:
+  - control-operator  # Terse, actionable output style for control-room operators
+
+# Tabs the web workspace offers beside the terminal. To turn on a panel
+# the framework already ships, uncomment one listed under this key.
+# A panel of your own is a list entry plus its address under `config:`:
+#
+#   web_panels:
+#     - elog
+#
+# and, under `config:`, web.panels.elog.url alongside web.panels.elog.label,
+# web.panels.elog.path and — optional — web.panels.elog.health_endpoint.
+web_panels: []   # Extra tabs in the web workspace, beside the terminal
+  # Available — uncomment to enable:
+  # - ariel  # ARIEL server
+  # - channel-finder  # Channel Finder
+  # - jupyter  # JupyterLab notebooks
+  # - lattice  # Lattice dashboard
+  # - okf  # OKF Knowledge Panel
+  # - system-health  # System Health Dashboard
+
+# Your own MCP servers, injected into the build's .mcp.json next to the
+# framework ones. An entry is either stdio (command/args/env) or remote (url,
+# or just port to derive http://localhost:<port>/mcp). transport defaults to
+# "http"; "sse" is the legacy event-stream wire and needs an explicit url.
+mcp_servers:
+  # A Python server's package lives at mcp_servers/<package>/ beside this file;
+  # the build copies it to build/_mcp_servers/<package>/ for `-m <package>`.
+  # The UED beamline server. Read-only by construction: it only reads PVs
+  # (caget), through the device map and snapshot in the ued-agentic-run repo's
+  # bringup/ (deployed on S3DF at UED_BRINGUP_DIR), so the map has one home.
+  # DEVIATION: mcp_servers.example_server removed, replaced by ued_beamline.
+  # DEVIATION: ued_beamline is the UED read-only beamline server.
+  ued_beamline:
+    command: "{current_python_env}"
+    args: [-m, ued_beamline]
+    env:
+      OSPREY_CONFIG: "{project_root}/build/config.yml"
+      PYTHONPATH: "{project_root}/build/_mcp_servers"
+      UED_BRINGUP_DIR: "${UED_BRINGUP_DIR:-/sdf/group/mli/zhezhang/ued/agentic/bringup}"
+      EPICS_CA_ADDR_LIST: "${EPICS_CA_ADDR_LIST:-172.21.36.255:5064}"
+      # Kept as a ${VAR:-NO} reference, not a bare "NO": the rendered config.yml
+      # round-trips through YAML 1.1, where NO loads back as the boolean false.
+      EPICS_CA_AUTO_ADDR_LIST: "${EPICS_CA_AUTO_ADDR_LIST:-NO}"
+    # Tool names under permissions are bare — `allow` runs them unprompted, `ask`
+    # prompts the operator on every call.
+    permissions:
+      allow: [ued_devices, ued_snapshot]
+  # Delete a block and its mcp_servers/<package>/ together: one without
+  # the other costs every session a 20 s wait for a server that cannot start.
+  # Editing either is a source change, not a build tweak: rebuild afterwards,
+  # since the directory enters the image context and the drift fingerprint.
+  #
+  #   lattice:
+  #     url: http://lattice.example.org:8400/mcp
+  #     port: 8400
+  #     transport: http
+  #     permissions:
+  #       allow: [get_twiss]
+
+# ── Everything else ──────────────────────────────────────────────────────────
+# One dotted `key.path` per line. Never write a nested block here: it would
+# replace the whole subtree and silently drop the keys beside it.
+#
+# This block is where configuration lives. build/config.yml is generated from
+# it and should never be hand-edited. `osprey set` writes here.
+config:
+  # Which control system to talk to. "mock" invents channels in-process, so
+  # reads work with no hardware and no containers behind them.
+  # DEVIATION: the real UED hutch IOCs, over EPICS Channel Access.
+  control_system.type: epics
+  # Writes are refused until this is on. Uncomment it, rebuild, and the limits
+  # and approval hooks above take over from there.
+  # UED rule: the agent never writes PVs on ued-daq. Pinned off explicitly,
+  # and unlisted channels refused, so a stray edit cannot flip it.
+  control_system.writes_enabled: false
+  control_system.limits_checking.allow_unlisted_channels: false
+  # Your facility's name, used in the agent's prompts and on the web landing
+  # page. Defaults to the deployment name.
+  # DEVIATION: facility identity
+  facility.name: UED
+  facility.prefix: ued
+  system.timezone: America/Los_Angeles
+  # The SLAC AI gateway (LiteLLM). ued-daq reaches it directly, no proxy
+  # (profiles/ued-daq.yml keeps it out of HTTPS_PROXY via NO_PROXY). Model ids
+  # as the gateway serves them, copied from the LCLS deployment (verified there
+  # 2026-09-24 against /v1/models).
+  # DEVIATION: the slac provider's gateway and model map.
+  api.providers.slac.api_key: ${SLAC_API_KEY}
+  api.providers.slac.base_url: https://ai-api.slac.stanford.edu/v1
+  api.providers.slac.models.haiku: us.anthropic.claude-haiku-4-5-20251001-v1:0
+  api.providers.slac.models.sonnet: us.anthropic.claude-sonnet-5
+  api.providers.slac.models.opus: us.anthropic.claude-opus-5
+  api.providers.slac.models.fable: us.anthropic.claude-fable-5-1
+  # UED rule: never write PVs on ued-daq. Five layers, because a Bash
+  # permission pattern alone is not a security boundary (it matches the
+  # command text, not what runs). Layer 5 is OSPREY_EXECUTION_MODE=readonly,
+  # set for the host in profiles/ued-daq.yml and .env:
+  #   1. writes_enabled: false above, and the controls write tool denied here;
+  #   2. these deny rules (`*` matches anywhere, so `python -c "...caput(..."`
+  #      and `ssh host caput ...` match too);
+  #   3. hooks/ued_write_guard.py, a PreToolUse gate on every shell command,
+  #      file write/edit and python execution (declared below);
+  #   4. deploy/ued/guard-bin, refusing caput/pvput shims first on PATH.
+  # Deny the controls write tool and the EPICS write clients.
+  claude_code.permissions.deny:
+    - mcp__controls__channel_write
+    - Bash(caput *)
+    - Bash(pvput *)
+    - Bash(*caput*)
+    - Bash(*pvput*)
+  # The UED write guard hook (hooks/ued_write_guard.py).
+  claude_code.hooks.PreToolUse:
+    - hook: ued_write_guard.py
+      matcher: "Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__python__.*"
+  # No containers on ued-daq, so no OpenObserve store to send OTLP to: the
+  # agent would only retry a refused loopback port.
+  claude_code.telemetry.enabled: false
+  # No container runtime on ued-daq (`osprey health`: "no container runtime
+  # available"), so no companion services; OpenObserve goes with telemetry.
+  deployed_services: []
+  # The provider check only knows providers with a built-in adapter, so it
+  # reports the slac gateway as "Unknown provider" and escalates to ERROR
+  # without probing it. `launch_ued.sh chat --print ping` is the real test.
+  # The ARIEL logbook-search companion needs its PostgreSQL store (a container,
+  # port 10800), which ued-daq cannot run: left on, every `osprey chat` floods
+  # the terminal with refused-connection retries.
+  # DEVIATION: the ariel web companion off (no logbook store on ued-daq).
+  ariel.web.auto_launch: false
+  # Same stopgap as the LCLS deployment.
+  # DEVIATION: the health block, provider check on demand (stopgap).
+  health.categories.providers.cost: on_demand
+  # Starting theme for every web terminal. Each browser can override it from
+  # the display menu.
+  # web.theme: light
+data: data
+# Minimum OSPREY release that understands this profile's keys. Builds below it abort.
+requires_osprey_version: '>=2026.9.0'
+# What this profile was materialized from. Emitted, not hand-written: a
+# build compares it against the installed preset and mentions it when the
+# preset has moved on; `osprey validate` refuses every difference from the
+# preset that no `# DEVIATION: <why>` comment above the line claims (tag set
+# by `deviation_marker:`). This profile is the source of truth either way.
+provenance:
+  preset: hello-world
+  preset_hash: sha256:fdd41e470ce46d49f206640e558eaab9e909ce034b6bcc456ff50e3edb1e0436
+# true builds its own services stack; false attaches to another project's.
+deploy_services: true
+# Services this profile declares. Injected ones are added at build time.
+services: {}
+# Environment variables the deployment needs. Replace `env: {}` with any
+# of `required` (the variable must be set somewhere), `pinned` (this
+# repo's own env chain owns it outright, and nowhere else), `defaults`
+# (name to value) and `file` (a profile-relative path copied in as .env):
+#
+#   env:
+#     required: [EPICS_CA_ADDR_LIST]
+#     pinned: [ARIEL_DB_PASSWORD]
+#     defaults:
+#       EPICS_CA_ADDR_LIST: 127.0.0.1
+#     file: env/facility.env
+#
+# If `env:` already has children, add yours under it.
+# DEVIATION: the slac provider's key; the value lives in .env (mode 600).
+# Host settings (EPICS list, proxies) live in profiles/ued-daq.yml.
+env:
+  required:
+    - SLAC_API_KEY
+# Named web-terminal layouts, as label -> list of panel ids.
+panel_presets: {}
+
+# --- Channel-finder paradigm -------------------------------------------------
+# How the agent looks up channels: in_context (whole DB in the prompt),
+# hierarchical (system/device drill-down), middle_layer, or graph (read-only
+# Cypher over the facility knowledge graph). The first three pick which channel
+# database the build writes; graph reads the store named by services.graphdb
+# and writes no database.
+#
+# channel_finder_mode: hierarchical
+
+# --- Channel-database tier ---------------------------------------------------
+# Build-time only (1 or 3), selecting which bundled tier DB is materialized.
+# Left unset the build picks a paradigm-aware default, which is why it stays
+# commented: pinning it here would override that default on every rebuild.
+# Tier 1 ships the in_context paradigm only.
+#
+# tier: 3
+
+# --- Default web-terminal panel ----------------------------------------------
+# Panel id opened when the web terminal loads. Must be a built-in, an entry in
+# the web_panels list above, or a custom panel backed by a web.panels.<id>.url
+# config override.
+#
+# default_panel: artifacts
+
+# --- Deployment coordinates --------------------------------------------------
+# Where this deployment is built, pushed, and run. Needed only once it leaves
+# the laptop; `osprey scaffold ci` renders the pipeline from it.
+#
+# Credentials are named here, never written here: declare each variable under
+# `env.required` and put its value in the deploy host's .env.
+#
+# deploy:
+#   ci: gitlab
+#   registry:
+#     url: git.example.org:5050/physics/production/facility-profiles
+#     token_env_var: FACILITY_REGISTRY_TOKEN
+#   host:
+#     name: appsdev2
+#     fqdn: appsdev2.example.org
+#     user: operator
+#     project_path: /home/operator/projects/facility-profiles
+
+# --- Artifacts gallery: custom categories ------------------------------------
+# Extra buckets in the artifacts gallery. Each key is the id a facility MCP
+# tool passes as category="<key>" when it saves an artifact; label and color
+# (#RRGGBB) decide how the gallery renders that bucket. The artifact_server
+# block also accepts host/port/auto_launch overrides for the gallery server.
+#
+# artifact_server:
+#   categories:
+#     optics:
+#       label: Optics
+#       color: "#4C9AFF"
+
+# --- Event dispatch ----------------------------------------------------------
+# Runs the agent unattended against a trigger file (facility events in, agent
+# runs out). worker_count sets parallelism; workspace_mode isolated gives each
+# run its own copy of the project.
+#
+# dispatch:
+#   triggers: triggers/my-facility.yml
+#   worker_count: 1
+#   workspace_mode: isolated
+#   facility_name: ALS
+
+# --- Bluesky bridge -----------------------------------------------------
+# Exposes Bluesky plans to the agent. tiled_enabled adds the data-access
+# service; excluded_plans removes shipped plans from the catalog. The bridge
+# and the Tiled catalog publish inside this deployment's port block, so the
+# port below is an override rather than a number you have to write.
+#
+# bluesky:
+#   port: 10080
+#   tiled_enabled: false
+#   excluded_plans: []
+
+# --- Virtual accelerator -----------------------------------------------------
+# Containerized soft-IOC serving simulated channels, so the deployment can be
+# exercised without touching the machine. live_standin runs a second copy of it
+# as the deployment's live target, so operators rehearse switching lanes before
+# any of it reaches the machine; delete the key to go live for real, or to save
+# the second container. Write `true` and the stand-in takes this deployment's
+# own stand-in port, so two deployments on one host never collide over it; a
+# number pins it somewhere specific instead. The first instance stays on the
+# Channel Access port below, the one port the port block cannot move.
+#
+# virtual_accelerator:
+#   port: 5064
+#   live_standin: true
+
+# --- Stored archive ----------------------------------------------------------
+# Where a simulated deployment keeps its history: a MongoDB store the build
+# seeds with a deterministic base series, a recorder samples the running
+# machine into, and the mongodb_archiver connector reads back. Declaring it
+# makes history stored data rather than values synthesized at read time.
+#
+# Every knob below travels into the rendered config.yml, so retention and
+# cadence are profile edits rather than code changes. The connector's own
+# connection keys are DERIVED from this block — do not also write
+# archiver.mongodb_archiver.* under `config:`, which would be the same fact
+# twice. Selecting the archiver stays a separate decision: set
+# `archiver.type: mongodb_archiver` in `config:` to read from this store.
+#
+# The password is never written here: `osprey up` mints it into the
+# deployment's .env under the name password_env gives.
+#
+# An attached project (deploy_services: false) deploys no store of its own and
+# must set `host` to the machine whose archive it reads.
+#
+# va_archiver:
+#   retention_days: 30          # how far back history reaches
+#   hot_span_hours: 48          # recent window kept at the dense cadence
+#   hot_cadence_sec: 10         # seconds between samples inside it
+#   tail_cadence_sec: 60        # ...and outside it (a multiple of the above)
+#   recorder_cadence_sec: 10    # how often the live machine is sampled
+#   recorder_tail_cadence_sec: 60
+#   recorder_poll_sec: 30       # how often the recorder re-reads config.yml
+#   port_host: 10801
+#   database: osprey_archiver
+#   collection: pv_history
+#   compression: zstd           # zstd | snappy | zlib | none
+#   username: osprey
+#   auth_database: admin
+#   password_env: MONGO_ROOT_PASSWORD
+#   timeout_sec: 5
+#   host: archive.example.org   # only for an attached project
+
+# --- Bluesky web panels ------------------------------------------------------
+# Scan-monitoring panels for the web terminal (requires the bluesky block). The
+# sidecar publishes inside this deployment's port block; the port below is an
+# override.
+#
+# bluesky_web:
+#   port: 10071
+
+# --- Nextcloud bridge --------------------------------------------------------
+# Answers questions asked from a Nextcloud Talk room. The trigger name must
+# match one declared in the dispatch triggers file.
+#
+# nextcloud_bridge:
+#   trigger: nextcloud-question
+
+# --- Google Chat bridge ------------------------------------------------------
+# Answers questions asked from a Google Chat space or direct message. The
+# trigger name must match one declared in the dispatch triggers file.
+#
+# The Google credentials and destinations are runtime env, not profile keys:
+# declare GCHAT_SA_KEY, GCHAT_SUBSCRIPTION and GCHAT_APP_ID under `env.required`
+# (plus GCS_BUCKET / GCS_PROJECT to deliver plots and files as links).
+#
+# gchat_bridge:
+#   trigger: gchat-question

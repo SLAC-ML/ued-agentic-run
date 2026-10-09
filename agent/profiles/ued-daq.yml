@@ -1,0 +1,57 @@
+# profiles/ued-daq.yml — host overlay for the UED DAQ machine (zhezhang@ued-daq).
+#
+# The deployment runs IN PLACE from S3DF: ued-daq mounts /sdf/group and
+# /sdf/home read-write at the same paths, so nothing is staged, rewritten or
+# pushed (contrast OspreyDeployments/LCLS/deploy/acr). Build on S3DF (iana),
+# launch on ued-daq with deploy/ued/launch_ued.sh.
+#
+# Network facts (checked 2026-10-07 from ued-daq):
+#   ai-api.slac.stanford.edu   reachable DIRECTLY — no proxy needed
+#   psproxy:3128 (PCDS squid)  reaches everything else (api.anthropic.com, PyPI, GitHub)
+#   lcls-prod03:3128           refuses ued-daq (403) — the LCLS proxy is not ours
+#
+# Select on that host with:  echo OSPREY_PROFILE_VARIANT=ued-daq > .env.variant
+config:
+  # Direct Channel Access on the UED hutch network: every hutch IOC (UED:*)
+  # answers a search broadcast on 172.21.36.0/24, the subnet ued-daq sits on.
+  # The connector writes `address` verbatim into EPICS_CA_ADDR_LIST.
+  # Accelerator PVs (AS01: gun RF, magnets, correctors) are NOT reachable from
+  # here — only from testfac-srv01.
+  control_system.connector.epics.gateways.read_only.address: "172.21.36.255:5064"
+  control_system.connector.epics.gateways.read_only.port: 5064
+  control_system.connector.epics.gateways.read_only.use_name_server: false
+  control_system.connector.epics.gateways.write_access.address: "172.21.36.255:5064"
+  control_system.connector.epics.gateways.write_access.port: 5064
+  control_system.connector.epics.gateways.write_access.use_name_server: false
+  # Presence-only acknowledgement (target_eligibility._acknowledged); say what it is.
+  control_system.target_switch.live_gateway_acknowledged: "direct CA on the UED hutch network (172.21.36.0/24) from ued-daq; writes refused by profile"
+  # Read-only, restated here so the host file alone tells the story.
+  control_system.writes_enabled: false
+  control_system.limits_checking.allow_unlisted_channels: false
+# These defaults document the host; osprey does NOT read them at launch.
+# `osprey web`/`chat` load .env.shared + .env, so the same values are written
+# into this repo's .env (mode 600) under the "Declared by this profile" banner,
+# exactly as the LCLS ACR's .env carries lcls-acr.yml's. Change both together.
+env:
+  defaults:
+    EPICS_CA_ADDR_LIST: "172.21.36.255:5064"
+    EPICS_CA_AUTO_ADDR_LIST: "NO"
+    # osprey's deployment-wide read-only run: the writes-check hook refuses every
+    # write call under it, ahead of any config read, and nothing a session or
+    # target does lifts it. Write-safety layer 5 (see profile.yml).
+    OSPREY_EXECUTION_MODE: readonly
+    # Network: the SLAC AI gateway directly (NO_PROXY); anything outside SLAC
+    # through the PCDS proxy. Web assets are the local bundles (no CDN).
+    HTTPS_PROXY: http://psproxy:3128
+    HTTP_PROXY: http://psproxy:3128
+    NO_PROXY: localhost,127.0.0.1,ai-api.slac.stanford.edu
+    OSPREY_OFFLINE: "1"
+    # Keep Claude Code's own optional traffic (telemetry, update checks) off,
+    # so psproxy carries as little as possible from this host.
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+    DISABLE_AUTOUPDATER: "1"
+    MCP_TIMEOUT: "120000"
+    MCP_CONNECT_TIMEOUT: "120000"
+    MCP_TOOL_TIMEOUT: "120000"
+    # Where the ued_beamline server finds the device map and snapshot.
+    UED_BRINGUP_DIR: /sdf/group/mli/zhezhang/ued/agentic/bringup

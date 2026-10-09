@@ -1,0 +1,48 @@
+# This repo is the deployment: the source zone is tracked, and the
+# generated or secret zones below never are. A fresh deployment has a clean
+# `git status` from birth.
+
+# OUTPUT — rendered by `osprey build` from the source zone. Regenerable in
+# full, so it is never committed.
+/build/
+
+# STATE — the agent's memory, sessions, and audit log. Durable, host-local,
+# and nobody else's business.
+/var/
+
+# The source zone `osprey init --force` is replacing, while the new one
+# renders. A successful run removes it; one that is killed outright leaves it,
+# and the next `osprey init` puts its contents back. Never committed either
+# way — for the seconds it exists it is a second copy of files already tracked.
+/.osprey-replaced-source-zone/
+
+# SECRETS — provider keys you set plus the tokens `osprey up` mints, and the
+# lock file the write-back path creates beside them. Two exceptions carry no
+# values a host may not share: .env.example, the documented variable list, and
+# .env.shared, this deployment's committed defaults.
+#
+# Every zone entry above is anchored to the repo root with a leading slash. An
+# unanchored `build/` or `.env*` would also swallow a same-named path anywhere
+# deeper in the tree — including files moved there later — and it would do it
+# silently.
+#
+# The same pattern covers `.env.variant`, which is not a secret but is
+# host-local for the same reason: it holds `OSPREY_PROFILE_VARIANT=<name>`, naming
+# which `profiles/<name>.yml` overlay THIS host builds. Committing it would
+# hand this host's choice to every other one.
+/.env*
+!/.env.example
+!/.env.shared
+
+# The compose document a deploy merges here when the container runtime needs a
+# single file. Machine-written, rewritten by every `osprey up`, removed by
+# `osprey reset` — anchored for the same reason the zones above are.
+/.osprey-compose.yml
+
+# OS / editor noise, and the bytecode Python leaves beside any server package
+# run in place. Deliberately unanchored: these are junk at any depth.
+.DS_Store
+*.swp
+*.swo
+__pycache__/
+*.py[co]
