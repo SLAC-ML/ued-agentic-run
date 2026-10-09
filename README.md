@@ -59,8 +59,16 @@ The Osprey agent for UED lives in its own repo at `/sdf/group/mli/zhezhang/Ospre
 ssh ued-daq   # no setup_env.sh needed; the launcher sets up its own environment
 L=/sdf/group/mli/zhezhang/OspreyDeployments/UED/deploy/ued/launch_ued.sh
 $L chat --print ping   # quick check
-$L web                 # web terminal; from a laptop: ssh -L 10102:127.0.0.1:10100 ued-daq
+$L web                 # web terminal on ued-daq's 127.0.0.1:10100
 ```
+
+From your laptop, open the tunnel and then the banner's token URL with port 10102:
+
+```bash
+ssh -N -o ControlPath=none -o ExitOnForwardFailure=yes -L 127.0.0.1:10102:127.0.0.1:10100 ued-daq
+```
+
+Without `ExitOnForwardFailure`, a taken local port only gives a warning, and the page loads forever. VS Code's automatic port forwarding is the usual cause.
 
 Its `deploy/ued/README.md` covers building, the one-time workspace trust, the network routes and the write guards.
 
