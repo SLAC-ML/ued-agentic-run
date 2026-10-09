@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Osprey on ued-daq</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column (max 64rem), same system as the other reports:
+   verdict, three findings, network table, LCLS vs UED, plan, decisions. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #152030;
+  --muted: #586478;
+  --rule: #d8dee7;
+  --chip: #e6ebf2;
+  --accent: #2456c9;
+  --good: #0c8a0c;
+  --bad: #c23a3a;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1219; --surface: #141b25; --ink: #e4e8ef; --muted: #96a1b3; --rule: #283241;
+    --chip: #1e2733; --accent: #82a4ff; --good: #2fbf4f; --bad: #e66767;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1219; --surface: #141b25; --ink: #e4e8ef; --muted: #96a1b3; --rule: #283241;
+  --chip: #1e2733; --accent: #82a4ff; --good: #2fbf4f; --bad: #e66767;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 16px; line-height: 1.55;
+  padding-inline: 16px; padding-block: 0 48px;
+}
+.wrap { max-width: 64rem; margin-inline: auto; display: grid; gap: 48px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); font-weight: 600; letter-spacing: -.01em; }
+h2 { font-size: 1.45rem; font-weight: 600; }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: .88em; overflow-wrap: anywhere; }
+.eyebrow { font-family: var(--mono); font-size: .8125rem; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.muted { color: var(--muted); }
+.section { display: grid; gap: 18px; }
+.section-head { display: grid; gap: 6px; max-width: 68ch; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block: 20px; border-bottom: 1px solid var(--rule); }
+.theme-btn { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font: 500 .875rem var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px 6px 10px; }
+.theme-btn:hover { border-color: var(--muted); }
+.theme-btn svg { width: 18px; height: 18px; }
+.theme-btn .moon { display: none; }
+.is-dark .theme-btn .sun { display: none; }
+.is-dark .theme-btn .moon { display: block; }
+
+.hero { display: grid; gap: 18px; }
+.lede { font-size: 1.125rem; max-width: 62ch; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 14px; }
+.finding { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.finding h3 { font-size: 1.05rem; }
+.finding p { font-size: .9375rem; color: var(--muted); }
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+th { font: 500 .75rem var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); vertical-align: bottom; }
+th .u { text-transform: none; letter-spacing: 0; }
+td.path { font-weight: 500; white-space: nowrap; }
+td.path small { display: block; font: 400 .8125rem var(--mono); color: var(--muted); }
+.r { display: inline-flex; align-items: center; gap: 7px; font: 500 .875rem var(--body); white-space: nowrap; }
+.r svg { width: 16px; height: 16px; flex: none; }
+.r.ok svg { color: var(--good); }
+.r.no svg { color: var(--bad); }
+.r small { font: 400 .78rem var(--mono); color: var(--muted); }
+
+.compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 14px; }
+.col { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.col ol, .col ul { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; font-size: .9375rem; }
+.col li::marker { color: var(--muted); }
+.steps { margin: 0; padding-left: 1.4rem; display: grid; gap: 12px; max-width: 72ch; }
+.steps li::marker { font: 600 1rem var(--display); color: var(--muted); }
+.steps li p + p { margin-top: 4px; }
+pre { margin: 6px 0 0; background: var(--chip); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font: .82rem/1.5 var(--mono); }
+.asks { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; max-width: 74ch; }
+.asks li { display: grid; grid-template-columns: 11rem 1fr; gap: 12px; align-items: baseline; }
+.asks li b { font-weight: 600; }
+@media (max-width: 560px) { .asks li { grid-template-columns: 1fr; gap: 2px; } }
+footer { border-top: 1px solid var(--rule); padding-top: 14px; font-size: .8125rem; color: var(--muted); display: grid; gap: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <span class="eyebrow">UED · Osprey / Otter deployment</span>
+    <button class="theme-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme">
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <span id="theme-label">Light</span>
+    </button>
+  </div>
+
+  <header class="hero">
+    <span class="eyebrow">Investigated 7 Oct 2026 · read-only checks on ued-daq</span>
+    <h1>Osprey and Otter can run on ued-daq straight from S3DF</h1>
+    <p class="lede"><code>ued-daq</code> mounts the S3DF group and home areas read-write at the same paths, and it reaches the SLAC AI gateway without a proxy. So none of the LCLS steps (staging, path rewriting, pushing, cutting over) is needed for UED. We build on S3DF and launch on <code>ued-daq</code>.</p>
+    <div class="findings">
+      <div class="finding">
+        <h3>No copy needed</h3>
+        <p>The existing builds start on <code>ued-daq</code> in place: Osprey 2026.6.2 on Python 3.12, Otter's venv on Python 3.11, and the bundled Claude Code 2.1.281. <code>/sdf/group</code> and <code>/sdf/home</code> are NFS read-write there, and the home directory is the same one as on S3DF.</p>
+      </div>
+      <div class="finding">
+        <h3>No tunnel needed</h3>
+        <p><code>ued-daq</code> reaches <code>ai-api.slac.stanford.edu</code> directly; the gateway answers "No api key passed in". For anything outside SLAC, the PCDS proxy <code>psproxy:3128</code> works.</p>
+      </div>
+      <div class="finding">
+        <h3>The LCLS proxy isn't for us</h3>
+        <p><code>lcls-prod03:3128</code> accepts the connection, then answers <code>403 Forbidden</code>. Its squid only serves the LCLS hosts.</p>
+      </div>
+    </div>
+  </header>
+
+  <section class="section" aria-labelledby="net-h">
+    <div class="section-head">
+      <h2 id="net-h">What ued-daq can reach</h2>
+      <p class="muted">HTTPS requests from <code>ued-daq</code> without credentials. A 401 means the request reached the service, which then asked for a key.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Route</th><th>SLAC AI gateway</th><th>api.anthropic.com</th><th>PyPI, GitHub</th></tr></thead>
+        <tbody>
+          <tr><td class="path">Direct<small>no proxy</small></td>
+            <td><span class="r ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>reached <small>401</small></span></td>
+            <td><span class="r no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>no route</span></td>
+            <td><span class="r no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>no route</span></td></tr>
+          <tr><td class="path">lcls-prod03:3128<small>the LCLS ACR proxy</small></td>
+            <td><span class="r no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>refused <small>403</small></span></td>
+            <td><span class="r no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>refused</span></td>
+            <td><span class="r no"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>refused</span></td></tr>
+          <tr><td class="path">psproxy:3128<small>PCDS squid, 172.21.32.65</small></td>
+            <td><span class="r ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>reached <small>401</small></span></td>
+            <td><span class="r ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>reached <small>401</small></span></td>
+            <td><span class="r ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>reached <small>200</small></span></td></tr>
+          <tr><td class="path">sdfproxy:3128<small>the S3DF proxy dnf uses</small></td>
+            <td><span class="r ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>reached <small>401</small></span></td>
+            <td><span class="r ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>reached <small>401</small></span></td>
+            <td><span class="r ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>reached <small>200</small></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="cmp-h">
+    <div class="section-head">
+      <h2 id="cmp-h">LCLS vs UED</h2>
+      <p class="muted">The LCLS route exists because <code>lcls-srv01</code> can't see S3DF.</p>
+    </div>
+    <div class="compare">
+      <div class="col">
+        <h3>How LCLS deploys (deploy/acr)</h3>
+        <ol>
+          <li><code>stage.sh</code> builds a 9.4 GB tree on S3DF.</li>
+          <li><code>rewrite_staging.sh</code> swaps every <code>/sdf/…</code> path for <code>/usr/local/lcls/tools</code>, and <code>verify_staging.sh</code> proves none is left.</li>
+          <li>The tree is pushed with <code>rsync</code> from <code>mcclogin</code> to <code>lcls-srv01</code>.</li>
+          <li><code>acr_cutover.sh</code> carries over local state and repeats the proofs.</li>
+          <li>LLM traffic goes through <code>HTTPS_PROXY=lcls-prod03:3128</code>, set in <code>profiles/lcls-acr.yml</code> and in Otter's <code>launch_acr.sh</code>.</li>
+        </ol>
+      </div>
+      <div class="col">
+        <h3>What UED keeps and drops</h3>
+        <ul>
+          <li><b>Keep:</b> a host profile variant (<code>ued-daq</code>) for the network and EPICS settings.</li>
+          <li><b>Keep:</b> a launcher that unsets <code>PYTHONPATH</code>. <code>ued-daq</code>'s <code>setup_env.sh</code> sets one, just as the ACR shell does.</li>
+          <li><b>Keep:</b> offline web assets (<code>OSPREY_OFFLINE=1</code>), the longer MCP timeouts, and a web terminal on loopback reached through an SSH tunnel.</li>
+          <li><b>Drop:</b> staging, path rewriting, the push and the cut-over. The paths are already right on <code>ued-daq</code>.</li>
+          <li><b>Drop:</b> the corporate proxy for the gateway; the direct route works.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="plan-h">
+    <div class="section-head"><h2 id="plan-h">Plan</h2></div>
+    <ol class="steps">
+      <li><p><b>Create the UED deployment repo</b> at <code>OspreyDeployments/UED</code> on S3DF, modelled on LCLS, with a <code>ued-daq</code> variant:</p>
+        <pre>provider: slac  →  https://ai-api.slac.stanford.edu/v1   (SLAC_API_KEY in .env, mode 600)
+NO_PROXY=localhost,127.0.0.1,ai-api.slac.stanford.edu     # the gateway, direct
+HTTPS_PROXY=http://psproxy:3128                            # anything outside SLAC
+OSPREY_OFFLINE=1
+control_system.writes_enabled: false                       # read-only, as for LCLS</pre>
+        <p>The read-only beamline snapshot from <code>bringup/</code> becomes its first machine tool.</p></li>
+      <li><p><b>Build on iana</b> with <code>osprey build</code>. It writes only to S3DF.</p></li>
+      <li><p><b>Add a launcher</b>, <code>deploy/ued/launch_ued.sh</code>. It unsets <code>PYTHONPATH</code>, puts the build's venv first, and points the web terminal at the bundled <code>claude</code>.</p></li>
+      <li><p><b>Smoke-test on ued-daq</b>, in this order: <code>launch_ued.sh health</code>, then <code>launch_ued.sh chat --print ping</code> (one round trip through the gateway), then the web terminal. The existing <code>ued-daq</code> SSH alias already chains <code>s3dflogin → psdev → ued-daq</code>, so the tunnel is one line:</p>
+        <pre>ssh -L 10102:127.0.0.1:10100 ued-daq     # then open http://localhost:10102</pre></li>
+      <li><p><b>Otter:</b> add a <code>ued</code> host case to its launcher, with the same network settings. Its venv already runs on <code>ued-daq</code>.</p></li>
+    </ol>
+  </section>
+
+  <section class="section" aria-labelledby="ask-h">
+    <div class="section-head"><h2 id="ask-h">Decisions for you</h2></div>
+    <ul class="asks">
+      <li><b>Account</b><span>Run as <code>zhezhang</code> (works today) or <code>uedopr</code>? <code>uedopr</code>'s home is also on S3DF, but it would need read access to the tree and its own key file.</span></li>
+      <li><b>Write safety</b><span><code>ued-daq</code> can write to every hutch IOC directly over Channel Access. Besides <code>writes_enabled: false</code>, the agent's shell permissions should deny <code>caput</code> and <code>pvput</code>. A read-only CA gateway would be the stronger fix later.</span></li>
+      <li><b>Accelerator PVs</b><span>Still reachable only from <code>testfac-srv01</code>. Until that's settled, the UED agent sees the hutch only.</span></li>
+      <li><b>S3DF dependency</b><span>Running in place means an S3DF outage stops the agent. A local copy on <code>ued-daq</code> would avoid that, but needs writes there, which would be yours.</span></li>
+      <li><b>psproxy</b><span>Worth a quick check with PCDS IT that the agent may use <code>psproxy</code>. It's only needed for traffic outside SLAC, such as <code>api.anthropic.com</code>.</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>Sources: <code>OspreyDeployments/LCLS/deploy/acr/*</code>, <code>profiles/lcls-acr.yml</code>, <code>profiles/facet-acr.yml</code>, <code>AgenticOpt/Otter/launch_acr.sh</code>.</span>
+    <span>Checks on <code>ued-daq</code> were read-only: DNS lookups, TCP connects, HTTPS requests without credentials, mount listing, and importing the S3DF venvs. No API key was sent and nothing was written there.</span>
+  </footer>
+</div>
+<script>
+(function () {
+  var root = document.documentElement, btn = document.getElementById('theme-toggle'), label = document.getElementById('theme-label');
+  var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  try { var s = localStorage.getItem('ued-deploy-theme'); if (s === 'light' || s === 'dark') root.setAttribute('data-theme', s); } catch (e) {}
+  function current() { var t = root.getAttribute('data-theme'); return t === 'light' || t === 'dark' ? t : (mq && mq.matches ? 'dark' : 'light'); }
+  function sync() { var t = current(); root.classList.toggle('is-dark', t === 'dark'); label.textContent = t === 'dark' ? 'Dark' : 'Light'; btn.setAttribute('aria-label', t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'); }
+  btn.addEventListener('click', function () { var n = current() === 'dark' ? 'light' : 'dark'; root.setAttribute('data-theme', n); try { localStorage.setItem('ued-deploy-theme', n); } catch (e) {} sync(); });
+  if (mq && mq.addEventListener) mq.addEventListener('change', sync);
+  new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  sync();
+})();
+</script>
+</body>
+</html>
