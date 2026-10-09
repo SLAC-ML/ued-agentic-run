@@ -7,6 +7,7 @@ This repo has two parts: running UED beamline simulations with GPT (General Part
 - `s3df/`: the scripts we use on S3DF. They set up the environment, run GPT (by hand or as a Slurm job), and sanity-check the output. [s3df/README.md](s3df/README.md) has the details.
 - `bringup/`: tools for the real beamline, starting from Fuhao's 2023 run-4 automation scripts. So far there's a map from the old PVs to today's PVs, a read-only snapshot of the beamline state, and the gun ramp-up procedure (simulator only for now). [bringup/README.md](bringup/README.md) has the details and the open questions.
 - `sim/`: GPT simulations of the bring-up stages. There's a beamline deck with all the steering kickers, a Python runner for scans, and one script per stage: gun ramp-up and collimator alignment so far. [sim/README.md](sim/README.md) has the details.
+- `agent/`: the source of the Osprey agent that runs on `ued-daq`. It holds the profile, the read-only beamline tool, the write guard and the launcher. Keys and build output stay out of git. [agent/deploy/ued/README.md](agent/deploy/ued/README.md) has the details.
 - `assets/`: the raw files from collaborators: the GPT Linux build and license, the `UED_May2025` deck and field maps, and the analysis notebook. It's big and licensed, so it's not in git. The S3DF folder below has a copy of everything.
 
 ## The S3DF side
@@ -53,7 +54,7 @@ The hutch PVs (`UED:*`) read fine from there. The accelerator PVs (gun RF, magne
 
 ### The agent on ued-daq
 
-The Osprey agent for UED lives in its own repo at `/sdf/group/mli/zhezhang/OspreyDeployments/UED`. It's built on S3DF and runs on `ued-daq` straight from there, with nothing copied over. It talks to the SLAC AI gateway directly and is read-only on the machine, with five separate guards against PV writes.
+The Osprey agent's source is `agent/` in this repo. The deployed copy is at `/sdf/group/mli/zhezhang/OspreyDeployments/UED`. It's built on S3DF and runs on `ued-daq` straight from there, with nothing copied over. It talks to the SLAC AI gateway directly and is read-only on the machine, with five separate guards against PV writes.
 
 ```bash
 ssh ued-daq   # no setup_env.sh needed; the launcher sets up its own environment
@@ -70,7 +71,7 @@ ssh -N -o ControlPath=none -o ExitOnForwardFailure=yes -L 127.0.0.1:10102:127.0.
 
 Without `ExitOnForwardFailure`, a taken local port only gives a warning, and the page loads forever. VS Code's automatic port forwarding is the usual cause.
 
-Its `deploy/ued/README.md` covers building, the one-time workspace trust, the network routes and the write guards.
+[agent/deploy/ued/README.md](agent/deploy/ued/README.md) covers syncing, building, the one-time workspace trust, the network routes and the write guards.
 
 ## Changing the scripts
 
@@ -80,4 +81,12 @@ Edit them here, then push them over:
 rsync -av s3df/ iana:/sdf/group/mli/zhezhang/ued/agentic/scripts/
 rsync -av bringup/ iana:/sdf/group/mli/zhezhang/ued/agentic/bringup/
 rsync -av sim/ iana:/sdf/group/mli/zhezhang/ued/agentic/sim/
+```
+
+The agent goes to its own deployed copy. The excludes protect its key file and build, which exist only on S3DF. Rebuild afterwards:
+
+```bash
+rsync -av --exclude='/.env' --exclude='/.env.variant' --exclude='/build/' --exclude='/var/' \
+    agent/ iana:/sdf/group/mli/zhezhang/OspreyDeployments/UED/
+ssh iana 'cd /sdf/group/mli/zhezhang/OspreyDeployments/UED && build/.venv/bin/osprey build --skip-deps'
 ```
