@@ -14,17 +14,19 @@
 config:
   # Direct Channel Access on the UED hutch network: every hutch IOC (UED:*)
   # answers a search broadcast on 172.21.36.0/24, the subnet ued-daq sits on.
+  # Accelerator PVs (AS01: gun RF, magnets, correctors) answer on
+  # 172.27.99.255:5058 (checked 2026-10-16); reads get both, the address list
+  # /cds/group/pcds/setup/ued_setup.sh sets. The write gateway keeps the hutch
+  # only, though writes are refused anyway.
   # The connector writes `address` verbatim into EPICS_CA_ADDR_LIST.
-  # Accelerator PVs (AS01: gun RF, magnets, correctors) are NOT reachable from
-  # here — only from testfac-srv01.
-  control_system.connector.epics.gateways.read_only.address: "172.21.36.255:5064"
+  control_system.connector.epics.gateways.read_only.address: "172.21.36.255:5064 172.27.99.255:5058"
   control_system.connector.epics.gateways.read_only.port: 5064
   control_system.connector.epics.gateways.read_only.use_name_server: false
   control_system.connector.epics.gateways.write_access.address: "172.21.36.255:5064"
   control_system.connector.epics.gateways.write_access.port: 5064
   control_system.connector.epics.gateways.write_access.use_name_server: false
   # Presence-only acknowledgement (target_eligibility._acknowledged); say what it is.
-  control_system.target_switch.live_gateway_acknowledged: "direct CA on the UED hutch network (172.21.36.0/24) from ued-daq; writes refused by profile"
+  control_system.target_switch.live_gateway_acknowledged: "direct CA from ued-daq to the UED hutch (172.21.36.0/24) and accelerator (172.27.99.255:5058) networks; writes refused by profile"
   # Read-only, restated here so the host file alone tells the story.
   control_system.writes_enabled: false
   control_system.limits_checking.allow_unlisted_channels: false
@@ -34,7 +36,7 @@ config:
 # exactly as the LCLS ACR's .env carries lcls-acr.yml's. Change both together.
 env:
   defaults:
-    EPICS_CA_ADDR_LIST: "172.21.36.255:5064"
+    EPICS_CA_ADDR_LIST: "172.21.36.255:5064 172.27.99.255:5058"
     EPICS_CA_AUTO_ADDR_LIST: "NO"
     # osprey's deployment-wide read-only run: the writes-check hook refuses every
     # write call under it, ahead of any config read, and nothing a session or

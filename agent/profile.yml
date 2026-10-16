@@ -154,7 +154,7 @@ mcp_servers:
       OSPREY_CONFIG: "{project_root}/build/config.yml"
       PYTHONPATH: "{project_root}/build/_mcp_servers"
       UED_BRINGUP_DIR: "${UED_BRINGUP_DIR:-/sdf/group/mli/zhezhang/ued/agentic/bringup}"
-      EPICS_CA_ADDR_LIST: "${EPICS_CA_ADDR_LIST:-172.21.36.255:5064}"
+      EPICS_CA_ADDR_LIST: "${EPICS_CA_ADDR_LIST:-172.21.36.255:5064 172.27.99.255:5058}"
       # Kept as a ${VAR:-NO} reference, not a bare "NO": the rendered config.yml
       # round-trips through YAML 1.1, where NO loads back as the boolean false.
       EPICS_CA_AUTO_ADDR_LIST: "${EPICS_CA_AUTO_ADDR_LIST:-NO}"

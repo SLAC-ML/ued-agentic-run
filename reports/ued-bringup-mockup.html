@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UED Bring-up Mock-up</title>
+<meta name="description" content="The eight UED bring-up stages as MCP tools, run against a GPT-backed virtual UED; what blocks each one on the real machine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one reading column (max 72rem), same system as ued-bringup-sims.html:
+   verdict + safety note, the stage table, how it works, charts from the tool
+   responses, the read-only check, shared blockers, questions. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #152030;
+  --muted: #586478;
+  --rule: #d8dee7;
+  --chip: #e6ebf2;
+  --accent: #2456c9;
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #8b5bd3;
+  --seq: #184f95;
+  --good: #0ca30c;
+  --warn: #c98500;
+  --bad: #d03b3b;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1219; --surface: #141b25; --ink: #e4e8ef; --muted: #96a1b3; --rule: #283241;
+    --chip: #1e2733; --accent: #82a4ff; --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #a585ee;
+    --seq: #5598e7; --good: #0ca30c; --warn: #fab219; --bad: #f0605d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1219; --surface: #141b25; --ink: #e4e8ef; --muted: #96a1b3; --rule: #283241;
+  --chip: #1e2733; --accent: #82a4ff; --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #a585ee;
+  --seq: #5598e7; --good: #0ca30c; --warn: #fab219; --bad: #f0605d;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--body); font-size: 16px; line-height: 1.55;
+  padding-inline: 16px; padding-block: 0 48px;
+}
+.wrap { max-width: 72rem; margin-inline: auto; display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(1.9rem, 4vw, 2.75rem); font-weight: 600; letter-spacing: -.01em; }
+h2 { font-size: 1.5rem; font-weight: 600; }
+h3 { font-size: 1.2rem; font-weight: 600; }
+p { margin: 0; }
+code, .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+code { font-size: .9em; }
+.eyebrow { font-family: var(--mono); font-size: .8125rem; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.muted { color: var(--muted); }
+.section { display: grid; gap: 20px; }
+.section-head { display: grid; gap: 8px; max-width: 70ch; }
+.prose { display: grid; gap: 10px; max-width: 70ch; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+/* Top bar and theme switch */
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block: 20px; border-bottom: 1px solid var(--rule); }
+.theme-btn {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font: 500 .875rem var(--body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px 6px 10px;
+}
+.theme-btn:hover { border-color: var(--muted); }
+.theme-btn svg { width: 18px; height: 18px; }
+.theme-btn .moon { display: none; }
+.is-dark .theme-btn .sun { display: none; }
+.is-dark .theme-btn .moon { display: block; }
+
+/* Hero */
+.hero { display: grid; gap: 20px; }
+.lede { font-size: 1.125rem; max-width: 64ch; }
+.safety { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px; max-width: 70ch; }
+.safety svg { width: 22px; height: 22px; color: var(--good); margin-top: 2px; }
+.safety p { font-size: .9375rem; }
+.findings { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; max-width: 74ch; }
+.findings li { display: grid; grid-template-columns: 9.5rem 1fr; gap: 12px; align-items: baseline; }
+@media (max-width: 560px) { .findings li { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Chips and status */
+.chip { display: inline-block; font: 500 .75rem var(--mono); letter-spacing: .02em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--rule); color: var(--muted); white-space: nowrap; }
+.status { display: inline-flex; align-items: center; gap: 6px; font: 500 .8125rem var(--mono); white-space: nowrap; color: var(--ink); }
+.status::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--muted); flex: none; }
+.status.answered::before { background: var(--good); border-color: var(--good); }
+.status.partly::before { background: linear-gradient(90deg, var(--warn) 50%, transparent 50%); border-color: var(--warn); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+th { font: 500 .75rem var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); vertical-align: bottom; }
+th .u { text-transform: none; letter-spacing: 0; }
+td.num, th.num { text-align: right; white-space: nowrap; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.t-q { min-width: 13rem; font-weight: 500; }
+.t-wide { min-width: 22rem; }
+.w-640 { min-width: 640px; }
+.w-760 { min-width: 760px; }
+
+/* Beamline strips */
+.beamline { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 8px 2px; overflow-x: auto; }
+.beamline svg { display: block; width: 100%; min-width: 760px; height: auto; }
+.bl-text { fill: var(--ink); font: 500 13px var(--body); }
+.bl-sub { fill: var(--muted); font: 400 11.5px var(--mono); }
+.bl-line { stroke: var(--muted); stroke-width: 2; }
+.bl-axis { stroke: var(--rule); stroke-width: 1; }
+.bl-tick { stroke: var(--muted); stroke-width: 1; }
+.bl-el { fill: var(--muted); }
+.bl-box { fill: none; stroke: var(--muted); stroke-width: 2; }
+.bl-plane { stroke: var(--ink); stroke-width: 2; }
+.bl-rough { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 2; }
+.bl-zoom { fill: none; stroke: var(--rule); stroke-width: 1; stroke-dasharray: 4 3; }
+.key-row { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: .875rem; color: var(--muted); }
+.key-row span { display: inline-flex; align-items: center; gap: 8px; }
+.k-solid { width: 12px; height: 12px; background: var(--muted); display: inline-block; border-radius: 2px; }
+.k-rough { width: 12px; height: 12px; border: 1.5px dashed var(--muted); display: inline-block; transform: rotate(45deg); }
+
+/* Charts */
+.charts-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 14px 8px; display: grid; gap: 8px; min-width: 0; }
+.card h4 { margin: 0; font: 600 .9375rem var(--body); }
+.card .sub { font-size: .8125rem; color: var(--muted); }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.ax-t { fill: var(--muted); font: 400 11px var(--mono); }
+.ax-l { fill: var(--muted); font: 500 11.5px var(--body); }
+.grid-l { stroke: var(--rule); stroke-width: 1; }
+.base-l { stroke: var(--muted); stroke-width: 1; }
+.ref-l { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+.ref-t { fill: var(--muted); font: 400 11px var(--mono); }
+.ln { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.c1 { stroke: var(--s1); } .f1 { fill: var(--s1); }
+.c2 { stroke: var(--s2); } .f2 { fill: var(--s2); }
+.c3 { stroke: var(--s3); } .f3 { fill: var(--s3); }
+.c4 { stroke: var(--s4); } .f4 { fill: var(--s4); }
+.mk { stroke: var(--surface); stroke-width: 2; }
+.xh { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.cell { fill: var(--seq); stroke: var(--surface); stroke-width: 1; }
+.cell-hit { fill: transparent; }
+.cell-hot { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.plot-bg { fill: var(--surface); stroke: var(--rule); }
+.mark-o { fill: none; stroke: var(--ink); stroke-width: 2; }
+.mark-p { stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.mark-t { fill: var(--ink); font: 600 12px var(--body); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.tip { position: absolute; pointer-events: none; z-index: 2; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 9px; font: 12px/1.45 var(--mono); color: var(--ink); white-space: nowrap; box-shadow: 0 4px 14px rgb(0 0 0 / .14); }
+.tip b { font-weight: 500; color: var(--muted); }
+.tip i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .8125rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+details { font-size: .875rem; }
+details summary { cursor: pointer; color: var(--muted); }
+details .table-wrap { margin-top: 8px; }
+
+/* Explainer boxes and notes */
+.explain { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 16px; }
+.box { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px 18px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+.box h4 { margin: 0; font: 600 1rem var(--body); display: flex; align-items: center; gap: 9px; }
+.box p, .box li { font-size: .9375rem; }
+.box ol { margin: 0; padding-left: 1.2rem; display: grid; gap: 4px; }
+.needs { margin: 0; padding-left: 1.2rem; display: grid; gap: 8px; max-width: 74ch; }
+.needs li::marker { color: var(--muted); }
+footer { border-top: 1px solid var(--rule); padding-top: 16px; font-size: .8125rem; color: var(--muted); display: grid; gap: 4px; }
+footer code { overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: no-preference) { .theme-btn { transition: border-color .15s; } }
+.wrap > *, .section > *, .hero > * { min-width: 0; }
+.findings .chip { justify-self: start; }
+td.val { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Stage table */
+table.stages { min-width: 1080px; }
+.stages td { font-size: .9375rem; }
+.stages td p + p { margin-top: 4px; }
+.stages ul { margin: 0; padding-left: 1.1rem; display: grid; gap: 3px; }
+.t-stage { width: 15rem; }
+.st-name { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; }
+.t-stage b { display: block; font-weight: 600; }
+.t-stage code { font-size: .78rem; color: var(--muted); }
+.t-stage .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--chip); font: 600 .8125rem var(--mono); }
+.t-sim { width: 14rem; color: var(--muted); }
+.t-mock { width: 15rem; }
+.t-real { width: 15rem; }
+.t-block li { font-size: .875rem; }
+.small { font-size: .8125rem; }
+.pill { display: inline-block; font: 500 .75rem var(--mono); padding: 1px 8px; border-radius: 999px; margin-bottom: 6px; border: 1px solid; }
+.pill.ok { color: var(--good); border-color: var(--good); }
+.pill.bad { color: var(--bad); border-color: var(--bad); }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; vertical-align: baseline; }
+.dot.ok { background: var(--good); }
+.dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); }
+.t-real details { margin-top: 8px; }
+.t-real summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.cnt { display: inline-flex; align-items: center; gap: 5px; font: 500 .8125rem var(--mono); color: var(--ink); }
+ul.chans { list-style: none; padding: 0; margin-top: 8px; display: grid; gap: 4px; }
+ul.chans li { display: grid; grid-template-columns: auto 1fr; column-gap: 7px; align-items: baseline; font-size: .8125rem; }
+ul.chans li .muted { grid-column: 2; font-family: var(--mono); font-size: .75rem; overflow-wrap: anywhere; }
+
+/* Flow diagram */
+.flow { display: grid; grid-template-columns: minmax(9rem, 1fr) auto minmax(11rem, 1.3fr) auto minmax(16rem, 2fr); align-items: center; gap: 12px; }
+.node { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; }
+.node b { font: 600 1rem var(--display); }
+.node span { font-size: .875rem; color: var(--muted); }
+.node.sim { border-left: 4px solid var(--s1); }
+.node.epics { border-left: 4px solid var(--s2); }
+.split { display: grid; gap: 10px; }
+.arrow { font: 500 .75rem var(--mono); color: var(--muted); text-align: center; white-space: nowrap; }
+.arrow::after { content: "→"; display: block; font-size: 1.3rem; line-height: 1; color: var(--muted); }
+@media (max-width: 760px) {
+  .flow { grid-template-columns: 1fr; }
+  .arrow::after { content: "↓"; }
+}
+
+.note-line { font-size: .9375rem; color: var(--muted); max-width: 74ch; }
+.files { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; max-width: 80ch; }
+.files code { overflow-wrap: anywhere; }
+pre { margin: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font: .8125rem/1.6 var(--mono); overflow-x: auto; }
+
+
+/* 2026-10-16 update */
+.nowrap { white-space: nowrap; }
+.safety.update svg { color: var(--accent); }
+.safety.update ul { margin: 6px 0 0; padding-left: 1.1rem; display: grid; gap: 3px; font-size: .9375rem; }
+.box.done { border-style: dashed; }
+.box.done h4 .chip { color: var(--good); border-color: var(--good); }
+code.muted { color: var(--muted); }
+.ep-more { margin-top: 4px; }
+.ep-more .table-wrap { max-height: 32rem; overflow: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <span class="eyebrow">UED bring-up · tooling mock-up · updated 2026-10-16</span>
+    <button class="theme-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme">
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <span id="theme-label">Light</span>
+    </button>
+  </div>
+
+  <header class="hero">
+    <span class="eyebrow">Run 7 proposal, Workflow 1 + 2 · ued_tuning MCP server · virtual UED (GPT + analytic models)</span>
+    <h1>All eight bring-up stages ran through MCP against the simulator</h1>
+    <p class="lede">Each stage from the Run 7 proposal is now a tool on one MCP server, <code>ued_tuning</code>. Called over stdio, the way the agent calls it, every stage ran against a virtual UED and passed its acceptance check, landing close to the hidden truth. On the real machine the same server now reads 69 of 75 channels, gun RF, magnets and correctors included, and every stage stops at or before its first write. The blockers between each stage and a real run are below.</p>
+    <div class="safety update" role="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+      <div><p><strong>What changed since 2026-10-09.</strong></p>
+      <ul>
+        <li><code>ued-daq</code> now reaches the accelerator PVs, through the CA entry <code>172.27.99.255:5058</code> that <code>ued_setup.sh</code> sets. Fuhao's run-7 test read all 109 of his PVs from our account.</li>
+        <li>His run-7 list corrected our map:
+          <ul>
+            <li>the sample stage is XPS-11, and <code>MMN:04:04</code>, our old "Sample X", is a pitch;</li>
+            <li>the delay is <code>MMN:03:04</code>;</li>
+            <li>the sample camera is <code>GIGE:03</code>, which has an e-beam cross;</li>
+            <li>pump energy is the Harmonics HWP.</li>
+          </ul></li>
+        <li>New channels in the tools: the pump lens, the pump power meter (it read "in" today), the chamber light, and the cross.</li>
+        <li>Camera stats now come from the images. The GigE cameras' Stats plugins are off, and would have read a fake centroid of 0.</li>
+        <li>Both runs were repeated with the new code.</li>
+      </ul></div>
+    </div>
+    <div class="safety" role="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.3 8.3-8 9-4.7-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+      <p><strong>Nothing touched the beamline.</strong> The campaign ran on S3DF against the simulator. On <code>ued-daq</code>, everything was <code>caget</code> only. That covered Fuhao's PV test (a copy, run from our S3DF folder), a probe of every PV the tools use, and the server with its read-only EPICS backend, whose eight stage tools all stopped at or before their first write. The backend refuses every write before any EPICS call and never imports <code>caput</code>.</p>
+    </div>
+    <ul class="findings">
+      <li><span class="chip">mock-up</span><span>8 of 8 stages accepted, in one MCP session: 6.2 min wall time, 44 GPT runs, 642 writes to the virtual machine.</span></li>
+      <li><span class="chip">real machine</span><span>69 of 75 channels read through the same tools, the accelerator side included. Six have no PV: the FC/YAG inserter, the Faraday-cup charge, XC/YC05, and the two signals that need a detector-image analysis.</span></li>
+      <li><span class="chip">blocking</span><span>Writes are now the main blocker: every stage writes, and the agent may not. Then come the inserter and charge PVs, taught positions, unit converters, and the analysis that stages 7 and 8 need.</span></li>
+    </ul>
+  </header>
+
+  <section class="section" aria-labelledby="tbl-h">
+    <div class="section-head">
+      <h2 id="tbl-h">Stage by stage</h2>
+      <p class="muted">"Mock-up" is the run through MCP against the virtual machine, measured against its hidden truth. "Real machine" is how the stage fared on <code>ued-daq</code> on 2026-10-16, read-only. Open a row's channel list to see every channel it writes, with the PV behind it.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="stages">
+        <thead><tr><th>Stage</th><th>Simulator behind it</th><th>Mock-up</th><th>Real machine</th><th>Road blockers</th></tr></thead>
+        <tbody id="stage-rows"></tbody>
+      </table>
+    </div>
+    <div class="key-row" aria-hidden="true">
+      <span><i class="dot ok"></i>reads on <code>ued-daq</code> (confirmed or likely PV)</span>
+      <span><i class="dot warn"></i>candidate PV, needs confirming</span>
+      <span><i class="dot bad"></i>no PV known (or a signal that needs a detector-image analysis)</span>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="arch-h">
+    <div class="section-head">
+      <h2 id="arch-h">How the mock-up works</h2>
+      <p class="muted">One server and two backends. The stage code doesn't know which machine is behind it.</p>
+    </div>
+    <div class="flow" aria-label="Agent calls the ued_tuning MCP server, which drives either the virtual UED or the read-only EPICS backend">
+      <div class="node"><b>Agent</b><span>Osprey / Claude Code, or the mock-up driver</span></div>
+      <div class="arrow" aria-hidden="true">MCP stdio</div>
+      <div class="node"><b>ued_tuning</b><span>one tool per stage, plus <code>machine_read</code> and <code>machine_channels</code></span></div>
+      <div class="arrow" aria-hidden="true">get / put</div>
+      <div class="split">
+        <div class="node sim"><b>sim</b><span><code>virtual_ued.py</code>: GPT for beam transport, analytic models for photoemission, laser, sample, pump-probe; hidden truth</span></div>
+        <div class="node epics"><b>epics</b><span><code>caget</code> through the PV map, camera stats from the images; every put refused (read-only)</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="ev-h">
+    <div class="section-head">
+      <h2 id="ev-h">What the tools did</h2>
+      <p class="muted">Four of the eight stages, from the tool responses as the MCP client received them. Hover for values.</p>
+    </div>
+    <div class="charts-2">
+      <div class="card"><h4>Stage 2 · Schottky scan</h4><span class="sub">Faraday-cup charge vs gun phase; dashed lines: the zero crossing found, and the truth just left of it</span><div class="legend" id="sch-legend" aria-hidden="true"></div><div class="chart" id="ch-schottky"></div></div>
+      <div class="card"><h4>Stage 5 · Collimator scans</h4><span class="sub">far-detector counts vs corrector kick, two sweeps per plane</span><div class="legend" id="col-legend" aria-hidden="true"></div><div class="chart" id="ch-coll"></div></div>
+      <div class="card"><h4>Stage 8 · Time zero</h4><span class="sub">Bragg-peak signal vs delay: the last zoomed scan, with its fit. The tool zooms ±3 mm → ±0.3 → ±0.03 and stops once t₀ is known to 5 µm.</span><div class="legend" id="t0-legend" aria-hidden="true"></div><div class="chart" id="ch-t0"></div></div>
+      <div class="card"><h4>Stages 3, 5, 6 · Converging</h4><span class="sub">distance to target ÷ tolerance at each measurement, log scale; the last point is the final check</span><div class="legend" id="conv-legend" aria-hidden="true"></div><div class="chart" id="ch-conv"></div></div>
+    </div>
+    <p class="note-line">Centring (stage 5) converged in two corrections this time (191 → 5 → 0.5 px). On 10-09, with a different noise draw, it hovered near 4 px, twice its 2 px tolerance, before passing. On the real camera the loop may need averaged centroids.</p>
+  </section>
+
+  <section class="section" aria-labelledby="ep-h">
+    <div class="section-head">
+      <h2 id="ep-h">The same server on the real machine (read-only)</h2>
+      <p class="muted">Run on <code>ued-daq</code> on 2026-10-16 with <code>UED_TUNING_BACKEND=epics</code> and the new CA address list. <span id="epics-count">69 of 75</span> channels answered. The ones that didn't have no PV.</p>
+    </div>
+    <div class="table-wrap"><table class="w-760" id="epics-groups"></table></div>
+    <div class="table-wrap"><table class="w-640" id="epics-stages"></table></div>
+    <details class="ep-more"><summary>Every channel, with its PV and the value it read</summary><div class="table-wrap"><table class="w-760" id="epics-all"></table></div></details>
+    <p class="note-line">The gun was off and the magnets were "Turned Off" (solenoid 2 "PS Tripped"), so these reads confirm access, not calibration. With no beam, the cameras' computed stats correctly say "no beam". The disabled Stats plugins would have given a centroid of 0.0.</p>
+  </section>
+
+  <section class="section" aria-labelledby="x-h">
+    <div class="section-head"><h2 id="x-h">Blockers shared across stages</h2></div>
+    <div class="explain" id="cross"></div>
+  </section>
+
+  <section class="section" aria-labelledby="q-h">
+    <div class="section-head"><h2 id="q-h">Questions for you</h2><p class="muted">None blocks the next step; each one turns a guess in the tools into a fact.</p></div>
+    <ol class="needs">
+      <li><strong>The write path.</strong> Now the main blocker. Should stage writes go through Badger routines that an operator approves, as the proposal describes, or through the MCP tools directly with approval and limits? For the accelerator side (gun RF, magnets), from <code>ued-daq</code> or through <code>uedopr</code> on <code>testfac-srv01</code>?</li>
+      <li><strong>Charge diagnostic (stages 2–3).</strong> Which PV gives the bunch charge: a Faraday cup, the Wave8 (<code>UED:W8:01</code>), something else? And which PV drives the FC/Diag YAG inserter? Neither is in the run-7 list.</li>
+      <li><strong>Sample stage (stages 4–7).</strong> The run-7 list puts it on XPS-11 (<code>MMN:11:03/04/05</code>), whose motor descriptions say "Incoupling X/Y" and "Outcoupling". Are those descriptions stale? The list's "2nd SUED sample stage" block gives <code>MMN:03:04</code> as Z, which is also the pump long delay. Is that block stale?</li>
+      <li><strong>Correctors (stage 5).</strong> Which PV sets the kick, <code>BCTRL</code> (reads −145.6, EGU "kG-m", limits ±521) or <code>BDES</code> (reads 0)? What's the kick per unit?</li>
+      <li><strong>Pump (stages 6, 8).</strong> Is the pump spot steered with the lens H/V (<code>MMN:08:05/06</code>, in the run-7 list) or the SmarAct <code>UED:MCS:01:m7/m8</code> ("pump_beam_X/Y")? Is <code>MMN:08:01</code>, whose description says "Pump Throttle", unused for SUED? The power meter read "in" on 10-16. Should the tools take it out?</li>
+      <li><strong>"UV feedback" (stage 3).</strong> Is it an existing loop, or should the tool run it?</li>
+      <li><strong>Operating phase (stage 2).</strong> Is it "zero crossing + 37°", as in the May 2025 deck? Which way does PREQ count?</li>
+      <li><strong>Transmission signal (stage 5).</strong> What do operators read to judge transmission (far-detector counts, a charge monitor)? What are the collimator's in and out positions in mm?</li>
+      <li><strong>Pattern quality and Bragg peaks (stages 7, 8).</strong> The Andor image now reads over CA. How is a good pattern judged today, and which Bragg peaks (ROIs) does time zero follow? Where does the Run 6 BOED code live?</li>
+    </ol>
+  </section>
+
+  <section class="section" aria-labelledby="f-h">
+    <div class="section-head"><h2 id="f-h">Files and rerunning</h2></div>
+    <ul class="files">
+      <li><code>bringup/ued_tuning/</code>: <code>channels.py</code> (the logical channels and their PVs), <code>stages.py</code> (the eight procedures), <code>server.py</code> (the MCP server, <code>python -m ued_tuning</code>), <code>epics_backend.py</code> (read-only; computes camera stats from the images). Not yet registered in the deployed agent.</li>
+      <li><code>bringup/mcp_readonly_check.py</code>: the read-only check on the real machine. <code>bringup/ued_pvs.py</code> follows the run-7 list now; the agent's profile in <code>agent/</code> gained the accelerator CA entry for reads, but isn't redeployed yet.</li>
+      <li><code>sim/virtual_ued.py</code>: the virtual machine. <code>sim/stages/mcp_mockup.py</code>: the campaign driver. The deck gained a <code>coll</code> switch to retract the collimator.</li>
+      <li>Results on S3DF, under <code>/sdf/group/mli/zhezhang/ued/agentic/</code>:
+        <ul>
+          <li><code>runs/sim/mcp_mockup_20261016/results.json</code>, with every tool request and response;</li>
+          <li><code>runs/epics/readonly_check_20261016.json</code>;</li>
+          <li><code>pv_survey/run7_20261016/</code>, Fuhao's PV test and our probes.</li>
+        </ul></li>
+    </ul>
+    <pre>ssh iana
+source /sdf/group/mli/zhezhang/ued/agentic/scripts/env.sh
+cd /sdf/group/mli/zhezhang/ued/agentic/sim/stages
+/sdf/group/mli/zhezhang/OspreyDeployments/UED/build/.venv/bin/python mcp_mockup.py   # ~7 min
+
+ssh ued-daq   # read-only check; bash -i picks up the CA list from ~/.bashrc
+cd /sdf/group/mli/zhezhang/ued/agentic/bringup
+bash -ic "/sdf/group/mli/zhezhang/OspreyDeployments/UED/build/.venv/bin/python mcp_readonly_check.py"</pre>
+  </section>
+
+  <footer>
+    <span>Simulator fidelity: GPT in fast mode (3000 particles, no space charge), so transmission reads 10 % instead of the 6 % with space charge. The photoemission, laser, sample and pump-probe models are placeholders with little noise, so the mock-up checks inputs, outputs and logic. It doesn't check the numbers a real run would give.</span>
+    <span>Mock-up run 2026-10-16 on S3DF iana; read-only check on ued-daq the same day. First version 2026-10-09.</span>
+  </footer>
+</div>
+
+<script type="application/json" id="report-data">{"stages":{"gun_ramp":{"accepted":true,"reason":"reached target","machine_s":601.0,"wall_s":0.5,"n_writes":303,"n_reads":2413,"written":[{"name":"afb_enable","pv":"SIOC:AS01:KY03:0:AFBENB","status":"CONFIRMED"},{"name":"areq","pv":"SIOC:AS01:KY03:0:AREQ","status":"CONFIRMED"},{"name":"pfb_enable","pv":"SIOC:AS01:KY03:0:PFBENB","status":"CONFIRMED"}]},"schottky_scan":{"accepted":true,"reason":"zero crossing found","machine_s":30.5,"wall_s":0.0,"n_writes":60,"n_reads":176,"written":[{"name":"diag_holder","pv":null,"status":"UNMAPPED"},{"name":"gun_uv_shutter","pv":"UED:USR:BHC:AO1:4","status":"CONFIRMED"},{"name":"preq","pv":"SIOC:AS01:KY03:0:PREQ","status":"CONFIRMED"}]},"set_bunch_charge":{"accepted":true,"reason":"charge on target","machine_s":7.0,"wall_s":0.0,"n_writes":5,"n_reads":21,"written":[{"name":"diag_holder","pv":null,"status":"UNMAPPED"},{"name":"gun_uv_shutter","pv":"UED:USR:BHC:AO1:4","status":"CONFIRMED"},{"name":"gun_uv_throttle","pv":"UED:USR:MMN:14:01","status":"CONFIRMED"}]},"beam_on_screens":{"accepted":true,"reason":"beam on both screens","machine_s":11.0,"wall_s":19.0,"n_writes":12,"n_reads":57,"written":[{"name":"cam_diag_yag.exposure","pv":"UED:GIGE:09:AcquireTime","status":"LIKELY"},{"name":"cam_diag_yag.gain","pv":"UED:GIGE:09:Gain","status":"LIKELY"},{"name":"cam_far_andor.exposure","pv":"UED:ANDOR:CAM:03:AcquireTime","status":"CONFIRMED"},{"name":"cam_far_andor.gain","pv":"UED:ANDOR:CAM:03:AndorEMGain","status":"CONFIRMED"},{"name":"collimator","pv":"UED:USR:MMN:14:07","status":"CONFIRMED"},{"name":"diag_holder","pv":null,"status":"UNMAPPED"},{"name":"gun_uv_shutter","pv":"UED:USR:BHC:AO1:4","status":"CONFIRMED"},{"name":"sample_x","pv":"UED:USR:MMN:11:03","status":"LIKELY"},{"name":"sample_y","pv":"UED:USR:MMN:11:04","status":"LIKELY"},{"name":"sample_z","pv":"UED:USR:MMN:11:05","status":"LIKELY"}]},"align_collimator":{"accepted":true,"reason":"transmission peaked and beam centred","machine_s":28.0,"wall_s":353.7,"n_writes":60,"n_reads":248,"written":[{"name":"cam_far_andor.exposure","pv":"UED:ANDOR:CAM:03:AcquireTime","status":"CONFIRMED"},{"name":"cam_far_andor.gain","pv":"UED:ANDOR:CAM:03:AndorEMGain","status":"CONFIRMED"},{"name":"collimator","pv":"UED:USR:MMN:14:07","status":"CONFIRMED"},{"name":"diag_holder","pv":null,"status":"UNMAPPED"},{"name":"gun_uv_shutter","pv":"UED:USR:BHC:AO1:4","status":"CONFIRMED"},{"name":"sample_x","pv":"UED:USR:MMN:11:03","status":"LIKELY"},{"name":"sample_y","pv":"UED:USR:MMN:11:04","status":"LIKELY"},{"name":"sample_z","pv":"UED:USR:MMN:11:05","status":"LIKELY"},{"name":"xc00","pv":"XCOR:AS01:121:BCTRL","status":"CONFIRMED"},{"name":"xc01","pv":"XCOR:AS01:221:BCTRL","status":"CONFIRMED"},{"name":"yc00","pv":"YCOR:AS01:122:BCTRL","status":"CONFIRMED"},{"name":"yc01","pv":"YCOR:AS01:222:BCTRL","status":"CONFIRMED"}]},"overlap_pump_laser":{"accepted":true,"reason":"laser on the e-beam marker","machine_s":15.0,"wall_s":0.0,"n_writes":29,"n_reads":155,"written":[{"name":"cam_sample_yag.cross_x","pv":"UED:GIGE:03:Cross2X","status":"CONFIRMED"},{"name":"cam_sample_yag.cross_y","pv":"UED:GIGE:03:Cross2Y","status":"CONFIRMED"},{"name":"cam_sample_yag.exposure","pv":"UED:GIGE:03:AcquireTime","status":"CONFIRMED"},{"name":"cam_sample_yag.gain","pv":"UED:GIGE:03:Gain","status":"CONFIRMED"},{"name":"chamber_light","pv":"ACSW:AS01:NW03:2POWERSTATE","status":"CONFIRMED"},{"name":"diag_holder","pv":null,"status":"UNMAPPED"},{"name":"gun_uv_shutter","pv":"UED:USR:BHC:AO1:4","status":"CONFIRMED"},{"name":"pump_energy","pv":"UED:USR:MMN:05:02","status":"LIKELY"},{"name":"pump_lens_h","pv":"UED:USR:MMN:08:05","status":"LIKELY"},{"name":"pump_lens_v","pv":"UED:USR:MMN:08:06","status":"LIKELY"},{"name":"pump_power_meter","pv":"UED:USR:MMN:05:06","status":"CONFIRMED"},{"name":"pump_shutter","pv":"UED:USR:BHC:AO1:3","status":"CONFIRMED"},{"name":"sample_x","pv":"UED:USR:MMN:11:03","status":"LIKELY"},{"name":"sample_y","pv":"UED:USR:MMN:11:04","status":"LIKELY"},{"name":"sample_z","pv":"UED:USR:MMN:11:05","status":"LIKELY"}]},"tune_sample_position":{"accepted":true,"reason":"best raster point set; an operator confirms the pattern (escalates by design)","machine_s":50.0,"wall_s":0.0,"n_writes":104,"n_reads":102,"written":[{"name":"diag_holder","pv":null,"status":"UNMAPPED"},{"name":"gun_uv_shutter","pv":"UED:USR:BHC:AO1:4","status":"CONFIRMED"},{"name":"pump_shutter","pv":"UED:USR:BHC:AO1:3","status":"CONFIRMED"},{"name":"sample_x","pv":"UED:USR:MMN:11:03","status":"LIKELY"},{"name":"sample_y","pv":"UED:USR:MMN:11:04","status":"LIKELY"},{"name":"sample_z","pv":"UED:USR:MMN:11:05","status":"LIKELY"}]},"find_time_zero":{"accepted":true,"reason":"t0 found","machine_s":12.4,"wall_s":0.9,"n_writes":69,"n_reads":249,"written":[{"name":"delay","pv":"UED:USR:MMN:03:04","status":"CONFIRMED"},{"name":"diag_holder","pv":null,"status":"UNMAPPED"},{"name":"gun_uv_shutter","pv":"UED:USR:BHC:AO1:4","status":"CONFIRMED"},{"name":"pump_energy","pv":"UED:USR:MMN:05:02","status":"LIKELY"},{"name":"pump_power_meter","pv":"UED:USR:MMN:05:06","status":"CONFIRMED"},{"name":"pump_shutter","pv":"UED:USR:BHC:AO1:3","status":"CONFIRMED"}]}},"schottky":{"coarse":[[0.0,0.0022],[10.0,-0.0018],[20.0,-0.0084],[30.0,0.0184],[40.0,-0.0041],[50.0,0.0046],[60.0,0.0192],[70.0,0.0162],[80.0,0.0051],[90.0,0.0029],[100.0,-0.0128],[110.0,-0.0013],[120.0,2.7215],[130.0,15.9845],[140.0,18.9856],[150.0,21.4719],[160.0,23.4288],[170.0,25.0831],[180.0,26.0794],[190.0,27.4724],[200.0,27.7522],[210.0,27.5357],[220.0,27.7592],[230.0,26.8242],[240.0,25.5602],[250.0,16.3492],[260.0,4.3554],[270.0,-0.0118],[280.0,0.0089],[290.0,0.0042],[300.0,-0.0048],[310.0,-0.0026],[320.0,0.0067],[330.0,0.0047],[340.0,-0.0026],[350.0,0.023]],"fine":[[116.0,0.0033],[117.0,0.0126],[118.0,-0.0059],[119.0,0.3762],[120.0,2.7397],[121.0,6.3209],[122.0,10.1815],[123.0,12.7402],[124.0,13.4784],[125.0,14.0745],[126.0,14.4238],[127.0,14.6495],[128.0,15.1985],[129.0,15.5113],[130.0,16.0768],[131.0,16.313],[132.0,16.7453],[133.0,16.9061],[134.0,17.3927],[135.0,17.6849],[136.0,17.9338]],"zc":118.7408,"truth":118.4},"charge":[[35.0,22.7055],[37.0,20.922],[45.0,13.0523],[48.1029,9.9267]],"collimator":[{"knob":"xc00","grid":[-1.5,-1.2,-0.9,-0.6,-0.3,0.0,0.3,0.6,0.9,1.2,1.5],"total":[80085.0,89175.0,68365.0,26483.0,1985.0,136.0,91.0,59.0,159.0,47.0,0.0],"set":-1.2588},{"knob":"yc00","grid":[-1.5,-1.2,-0.9,-0.6,-0.3,0.0,0.3,0.6,0.9,1.2,1.5],"total":[13820.0,76674.0,156171.0,180247.0,161696.0,93132.0,23794.0,72.0,44.0,0.0,124.0],"set":-0.5806},{"knob":"xc00","grid":[-2.0088,-1.7588,-1.5088,-1.2588,-1.0088,-0.7588,-0.5088],"total":[45839.0,104209.0,157189.0,184236.0,174969.0,115947.0,53054.0],"set":-1.1976},{"knob":"yc00","grid":[-1.3306,-1.0806,-0.8306,-0.5806,-0.3306,-0.0806,0.1694],"total":[47627.0,108030.0,161987.0,174892.0,167515.0,121917.0,51052.0],"set":-0.5465}],"steering":[{"centroid_px":[375.61,378.55],"error_px":[-136.39,-133.45]},{"centroid_px":[509.11,516.23],"error_px":[-2.89,4.23]},{"centroid_px":[512.26,512.4],"error_px":[0.26,0.4]}],"centre_error_px":0.1534,"overlap":[{"laser_px":[912.04,1123.66],"error_px":[-96.03,97.45]},{"laser_px":[977.74,1050.7],"error_px":[-30.33,24.49]},{"laser_px":[1008.49,1026.46],"error_px":[0.42,0.26]}],"overlap_final_px":0.5482,"t0":{"coarse":[[57.0,0.9989],[57.2,1.001],[57.4,1.0044],[57.6,1.0013],[57.8,0.9985],[58.0,0.9987],[58.2,1.0003],[58.4,1.0016],[58.6,1.002],[58.8,0.9975],[59.0,0.9988],[59.2,1.0021],[59.4,1.0033],[59.6,0.9976],[59.8,1.0049],[60.0,0.9981],[60.2,0.9987],[60.4,0.9991],[60.6,0.9989],[60.8,1.0028],[61.0,0.9997],[61.2,1.0008],[61.4,0.8514],[61.6,0.8496],[61.8,0.8493],[62.0,0.8517],[62.2,0.8508],[62.4,0.8495],[62.6,0.8475],[62.8,0.8484],[63.0,0.8523]],"fine":[[61.0498,1.0007],[61.0698,0.9982],[61.0898,0.9976],[61.1098,1.0024],[61.1298,0.9986],[61.1498,1.0012],[61.1698,1.0019],[61.1898,0.9996],[61.2098,0.9993],[61.2298,0.9659],[61.2498,0.8498],[61.2698,0.8473],[61.2898,0.8455],[61.3098,0.8484],[61.3298,0.8502],[61.3498,0.8466],[61.3698,0.8487],[61.3898,0.8481],[61.4098,0.8513],[61.4298,0.8475],[61.4498,0.8465],[61.4698,0.8523],[61.4898,0.8522],[61.5098,0.8526],[61.5298,0.8488],[61.5498,0.8485],[61.5698,0.8486],[61.5898,0.8503],[61.6098,0.8514],[61.6298,0.8499],[61.6498,0.8513]],"t0":61.2341,"truth":61.234,"levels":[{"span_mm":3.0,"i0":1.0004,"drop":0.1505,"t0_mm":61.3498,"width_mm":0.0216,"t0_err_mm":24403898157492.94,"residual":0.0019},{"span_mm":0.3,"i0":0.9999,"drop":0.1506,"t0_mm":61.2341,"width_mm":0.0058,"t0_err_mm":0.0017,"residual":0.0019}]},"raster":{"x":[13.85,13.9,13.95,14.0,14.05,14.1,14.15],"y":[44.95,45.0,45.05,45.1,45.15,45.2,45.25],"q":[[0.0,0.001,0.04,0.329,0.628,0.4,0.18],[0.0,0.007,0.108,0.648,0.914,0.616,0.388],[0.0,0.008,0.081,0.619,0.898,0.597,0.364],[0.008,0.014,0.034,0.228,0.514,0.337,0.131],[0.0,0.005,0.0,0.036,0.059,0.032,0.004],[0.002,0.002,0.0,0.0,0.007,0.005,0.0],[0.004,0.0,0.005,0.001,0.003,0.007,0.011]],"best":[14.05,45.0]},"truth":{"phase_offset_deg":118.4,"t0_delay_mm":61.234,"flake_center_mm":[14.07,45.02],"cathode_offset_um":[150.0,-100.0],"stats":{"gpt_runs":44,"gpt_seconds":372.6578,"gets":3421,"puts":642},"phase_error_deg":0.3408,"charge_fC":9.988,"ebeam_at_sample_um":[-216.0699,-23.3934],"laser_minus_ebeam_um":[1.7487,0.5842],"transmission":0.1043,"andor_offset_from_centre_px":[0.0936,0.4147],"stage_minus_flake_um":[-20.0,-20.0],"pattern_quality_now":0.92,"pattern_quality_best":0.9381,"stage_best_mm":[14.045,45.02],"delay_error_mm":0.0001},"final_state":{"areq":0.53,"aact":0.53,"preq":155.7408,"gun_uv_throttle":48.1029,"fc_charge":null,"xc00":-1.1976,"yc00":-0.5465,"xc01":1.1533,"yc01":0.7603,"pump_lens_h":0.7292,"pump_lens_v":-0.6596,"pump_power_meter":0,"chamber_light":1,"cam_sample_yag.cross_x":1008.0,"cam_sample_yag.cross_y":1026.0,"sample_x":14.05,"sample_y":45.0,"delay":61.2341},"epics":{"info":{"backend":"epics","stages":["gun_ramp","schottky_scan","set_bunch_charge","beam_on_screens","align_collimator","overlap_pump_laser","tune_sample_position","find_time_zero"]},"started":"2026-10-16 12:01:02","ca_addr_list":"172.21.36.255:5064 172.27.99.255:5058","channels":[{"name":"areq","group":"gun_rf","units":"","writable":true,"pv":"SIOC:AS01:KY03:0:AREQ","status":"CONFIRMED","desc":"Gun amplitude setpoint (0..0.53)","pv_units":"EGU reads \"degrees\""},{"name":"preq","group":"gun_rf","units":"deg","writable":true,"pv":"SIOC:AS01:KY03:0:PREQ","status":"CONFIRMED","desc":"Gun phase setpoint","pv_units":""},{"name":"aact","group":"gun_rf","units":"","writable":false,"pv":"SIOC:AS01:KY03:0:AACT_AVGNT","status":"CONFIRMED","desc":"Gun amplitude readback (averaged)","pv_units":"kV"},{"name":"pact","group":"gun_rf","units":"deg","writable":false,"pv":"SIOC:AS01:KY03:0:PACT_AVGNT","status":"CONFIRMED","desc":"Gun phase readback (averaged)","pv_units":""},{"name":"pfb_enable","group":"gun_rf","units":"","writable":true,"pv":"SIOC:AS01:KY03:0:PFBENB","status":"CONFIRMED","desc":"Phase feedback enable","pv_units":""},{"name":"afb_enable","group":"gun_rf","units":"","writable":true,"pv":"SIOC:AS01:KY03:0:AFBENB","status":"CONFIRMED","desc":"Amplitude feedback enable","pv_units":""},{"name":"pfb_status","group":"gun_rf","units":"","writable":false,"pv":"SIOC:AS01:KY03:0:PFBST","status":"CONFIRMED","desc":"Phase feedback status","pv_units":""},{"name":"afb_status","group":"gun_rf","units":"","writable":false,"pv":"SIOC:AS01:KY03:0:AFBST","status":"CONFIRMED","desc":"Amplitude feedback status","pv_units":""},{"name":"gun_temp","group":"gun_rf","units":"C","writable":false,"pv":"APC:AS01:TM01:M2_CH2_SPARE","status":"CONFIRMED","desc":"Gun body temperature","pv_units":""},{"name":"gun_uv_shutter","group":"laser","units":"","writable":true,"pv":"UED:USR:BHC:AO1:4","status":"CONFIRMED","desc":"Gun UV shutter (1 open, 0 closed; the real output is a voltage whose levels are not known yet)","pv_units":"V"},{"name":"gun_uv_throttle","group":"laser","units":"deg","writable":true,"pv":"UED:USR:MMN:14:01","status":"CONFIRMED","desc":"Drive UV throttle (max transmission at 21 deg)","pv_units":""},{"name":"pump_shutter","group":"laser","units":"","writable":true,"pv":"UED:USR:BHC:AO1:3","status":"CONFIRMED","desc":"Pump main shutter (1 open)","pv_units":"V"},{"name":"pump_energy","group":"laser","units":"","writable":true,"pv":"UED:USR:MMN:05:02","status":"LIKELY","desc":"Pump energy fraction. Real control: the Harmonics HWP (max @ 51 deg) with the ND wheel UED:USR:MMN:05:08 (max @ 310 deg)","pv_units":"deg"},{"name":"pump_power_meter","group":"laser","units":"","writable":true,"pv":"UED:USR:MMN:05:06","status":"CONFIRMED","desc":"Pump power meter (1 in the beam, blocking the pump; 0 out)","pv_units":"mm, in @ 40"},{"name":"pump_lens_h","group":"laser","units":"mm","writable":true,"pv":"UED:USR:MMN:08:05","status":"LIKELY","desc":"Pump lens H: moves the pump spot on the sample (UED:MCS:01:m7, \"pump_beam_X\", is the other candidate)","pv_units":""},{"name":"pump_lens_v","group":"laser","units":"mm","writable":true,"pv":"UED:USR:MMN:08:06","status":"LIKELY","desc":"Pump lens V: moves the pump spot on the sample (UED:MCS:01:m8, \"pump_beam_Y\", is the other candidate)","pv_units":""},{"name":"sol1","group":"magnets","units":"","writable":true,"pv":"SOLN:AS01:121:BCTRL","status":"CONFIRMED","desc":"Gun solenoid strength","pv_units":"kG-m"},{"name":"sol2","group":"magnets","units":"","writable":true,"pv":"SOLN:AS01:311:BCTRL","status":"CONFIRMED","desc":"2nd solenoid strength","pv_units":"A"},{"name":"diag_holder","group":"beamline","units":"","writable":true,"pv":null,"status":"UNMAPPED","desc":"Faraday cup / Diag YAG inserter (0 out, 1 YAG, 2 FC)","pv_units":""},{"name":"collimator","group":"beamline","units":"","writable":true,"pv":"UED:USR:MMN:14:07","status":"CONFIRMED","desc":"Collimator (1 in, 0 out; in/out positions in mm TBD)","pv_units":"mm"},{"name":"chamber_light","group":"beamline","units":"","writable":true,"pv":"ACSW:AS01:NW03:2POWERSTATE","status":"CONFIRMED","desc":"Sample chamber light (1 on, 0 off). Reads the state; switched by writing ACSW:AS01:NW03:2POWERON or :2POWEROFF","pv_units":""},{"name":"fc_charge","group":"diagnostics","units":"fC","writable":false,"pv":null,"status":"UNMAPPED","desc":"Faraday cup charge (reads only with the cup inserted)","pv_units":""},{"name":"sample_x","group":"sample","units":"mm","writable":true,"pv":"UED:USR:MMN:11:03","status":"LIKELY","desc":"Sample X","pv_units":""},{"name":"sample_y","group":"sample","units":"mm","writable":true,"pv":"UED:USR:MMN:11:04","status":"LIKELY","desc":"Sample Y","pv_units":""},{"name":"sample_z","group":"sample","units":"mm","writable":true,"pv":"UED:USR:MMN:11:05","status":"LIKELY","desc":"Sample Z","pv_units":""},{"name":"pattern_quality","group":"sample","units":"","writable":false,"pv":null,"status":"SIM_ONLY","desc":"Diffraction pattern quality score (0..1). On the real machine, a score of the far-detector image (readable: cam_far_andor image); the scoring function does not exist yet","pv_units":""},{"name":"delay","group":"pump_probe","units":"mm","writable":true,"pv":"UED:USR:MMN:03:04","status":"CONFIRMED","desc":"Pump long delay stage","pv_units":""},{"name":"diffraction_signal","group":"pump_probe","units":"","writable":false,"pv":null,"status":"SIM_ONLY","desc":"Bragg-peak intensity, normalised to pump-off. On the real machine, ROI sums on the far-detector image; the peak ROIs are not defined yet","pv_units":""},{"name":"cam_diag_yag.exposure","group":"camera","units":"s","writable":true,"pv":"UED:GIGE:09:AcquireTime","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): exposure","pv_units":""},{"name":"cam_diag_yag.gain","group":"camera","units":"","writable":true,"pv":"UED:GIGE:09:Gain","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): gain","pv_units":""},{"name":"cam_diag_yag.centroid_x","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): centroid_x, computed from the image","pv_units":""},{"name":"cam_diag_yag.centroid_y","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): centroid_y, computed from the image","pv_units":""},{"name":"cam_diag_yag.sigma_x","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): sigma_x, computed from the image","pv_units":""},{"name":"cam_diag_yag.sigma_y","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): sigma_y, computed from the image","pv_units":""},{"name":"cam_diag_yag.total","group":"camera","units":"counts","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): total, computed from the image","pv_units":""},{"name":"cam_diag_yag.max_value","group":"camera","units":"counts","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): max_value, computed from the image","pv_units":""},{"name":"cam_diag_yag.saturated","group":"camera","units":"","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): saturated, computed from the image","pv_units":""},{"name":"cam_diag_yag.size_x","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): size_x, computed from the image","pv_units":""},{"name":"cam_diag_yag.size_y","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:09:IMAGE1:ArrayData","status":"LIKELY","desc":"Diag YAG camera (z ~0.5 m): size_y, computed from the image","pv_units":""},{"name":"cam_sample_yag.exposure","group":"camera","units":"s","writable":true,"pv":"UED:GIGE:03:AcquireTime","status":"CONFIRMED","desc":"Sample chamber camera (RGB): exposure","pv_units":""},{"name":"cam_sample_yag.gain","group":"camera","units":"","writable":true,"pv":"UED:GIGE:03:Gain","status":"CONFIRMED","desc":"Sample chamber camera (RGB): gain","pv_units":""},{"name":"cam_sample_yag.centroid_x","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): centroid_x, computed from the image","pv_units":""},{"name":"cam_sample_yag.centroid_y","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): centroid_y, computed from the image","pv_units":""},{"name":"cam_sample_yag.sigma_x","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): sigma_x, computed from the image","pv_units":""},{"name":"cam_sample_yag.sigma_y","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): sigma_y, computed from the image","pv_units":""},{"name":"cam_sample_yag.total","group":"camera","units":"counts","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): total, computed from the image","pv_units":""},{"name":"cam_sample_yag.max_value","group":"camera","units":"counts","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): max_value, computed from the image","pv_units":""},{"name":"cam_sample_yag.saturated","group":"camera","units":"","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): saturated, computed from the image","pv_units":""},{"name":"cam_sample_yag.size_x","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): size_x, computed from the image","pv_units":""},{"name":"cam_sample_yag.size_y","group":"camera","units":"px","writable":false,"pv":"UED:GIGE:03:IMAGE1:ArrayData","status":"CONFIRMED","desc":"Sample chamber camera (RGB): size_y, computed from the image","pv_units":""},{"name":"cam_far_andor.exposure","group":"camera","units":"s","writable":true,"pv":"UED:ANDOR:CAM:03:AcquireTime","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: exposure","pv_units":""},{"name":"cam_far_andor.gain","group":"camera","units":"","writable":true,"pv":"UED:ANDOR:CAM:03:AndorEMGain","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: gain","pv_units":""},{"name":"cam_far_andor.centroid_x","group":"camera","units":"px","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: centroid_x, computed from the image","pv_units":""},{"name":"cam_far_andor.centroid_y","group":"camera","units":"px","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: centroid_y, computed from the image","pv_units":""},{"name":"cam_far_andor.sigma_x","group":"camera","units":"px","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: sigma_x, computed from the image","pv_units":""},{"name":"cam_far_andor.sigma_y","group":"camera","units":"px","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: sigma_y, computed from the image","pv_units":""},{"name":"cam_far_andor.total","group":"camera","units":"counts","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: total, computed from the image","pv_units":""},{"name":"cam_far_andor.max_value","group":"camera","units":"counts","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: max_value, computed from the image","pv_units":""},{"name":"cam_far_andor.saturated","group":"camera","units":"","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: saturated, computed from the image","pv_units":""},{"name":"cam_far_andor.size_x","group":"camera","units":"px","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: size_x, computed from the image","pv_units":""},{"name":"cam_far_andor.size_y","group":"camera","units":"px","writable":false,"pv":"UED:ANDOR:CAM:03:IMAGE2:ArrayData","status":"CONFIRMED","desc":"Far-detector Andor EMCCD: size_y, computed from the image","pv_units":""},{"name":"cam_sample_yag.cross_x","group":"camera","units":"px","writable":true,"pv":"UED:GIGE:03:Cross2X","status":"CONFIRMED","desc":"Sample chamber camera: e-beam marker x","pv_units":""},{"name":"cam_sample_yag.cross_y","group":"camera","units":"px","writable":true,"pv":"UED:GIGE:03:Cross2Y","status":"CONFIRMED","desc":"Sample chamber camera: e-beam marker y","pv_units":""},{"name":"xc00","group":"correctors","units":"mrad","writable":true,"pv":"XCOR:AS01:121:BCTRL","status":"CONFIRMED","desc":"XC00 steering kick","pv_units":"EGU kG-m"},{"name":"yc00","group":"correctors","units":"mrad","writable":true,"pv":"YCOR:AS01:122:BCTRL","status":"CONFIRMED","desc":"YC00 steering kick","pv_units":"EGU kG-m"},{"name":"xc01","group":"correctors","units":"mrad","writable":true,"pv":"XCOR:AS01:221:BCTRL","status":"CONFIRMED","desc":"XC01 steering kick","pv_units":"EGU kG-m"},{"name":"yc01","group":"correctors","units":"mrad","writable":true,"pv":"YCOR:AS01:222:BCTRL","status":"CONFIRMED","desc":"YC01 steering kick","pv_units":"EGU kG-m"},{"name":"xc02","group":"correctors","units":"mrad","writable":true,"pv":"XCOR:AS01:321:BCTRL","status":"CONFIRMED","desc":"XC02 steering kick","pv_units":"EGU kG-m"},{"name":"yc02","group":"correctors","units":"mrad","writable":true,"pv":"YCOR:AS01:322:BCTRL","status":"CONFIRMED","desc":"YC02 steering kick","pv_units":"EGU kG-m"},{"name":"xc03","group":"correctors","units":"mrad","writable":true,"pv":"XCOR:AS01:341:BCTRL","status":"CONFIRMED","desc":"XC03 steering kick","pv_units":"EGU kG-m"},{"name":"yc03","group":"correctors","units":"mrad","writable":true,"pv":"YCOR:AS01:342:BCTRL","status":"CONFIRMED","desc":"YC03 steering kick","pv_units":"EGU kG-m"},{"name":"xc04","group":"correctors","units":"mrad","writable":true,"pv":"XCOR:AS01:381:BCTRL","status":"CONFIRMED","desc":"XC04 steering kick","pv_units":"EGU kG-m"},{"name":"yc04","group":"correctors","units":"mrad","writable":true,"pv":"YCOR:AS01:382:BCTRL","status":"CONFIRMED","desc":"YC04 steering kick","pv_units":"EGU kG-m"},{"name":"xc05","group":"correctors","units":"mrad","writable":true,"pv":null,"status":"UNMAPPED","desc":"XC05 steering kick","pv_units":""},{"name":"yc05","group":"correctors","units":"mrad","writable":true,"pv":null,"status":"UNMAPPED","desc":"YC05 steering kick","pv_units":""}],"reads":{"areq":0.0,"preq":133.0,"aact":0.0002,"pact":-33.9185,"pfb_enable":"Disable","afb_enable":"Disable","pfb_status":"Disable","afb_status":"Disable","gun_temp":36.3256,"gun_uv_shutter":0.0,"gun_uv_throttle":50.0,"pump_shutter":0.0,"pump_energy":6.0,"pump_power_meter":40.0,"pump_lens_h":0.0614,"pump_lens_v":12.4,"sol1":0.215,"sol2":3.805,"diag_holder":{"error":"ChannelUnavailable: diag_holder: no PV known yet (UNMAPPED)"},"collimator":0.0,"chamber_light":0,"fc_charge":{"error":"ChannelUnavailable: fc_charge: no PV known yet (UNMAPPED)"},"sample_x":-21.85,"sample_y":-7.6,"sample_z":0.1,"pattern_quality":{"error":"ChannelUnavailable: pattern_quality: no PV known yet (SIM_ONLY)"},"delay":141.3638,"diffraction_signal":{"error":"ChannelUnavailable: diffraction_signal: no PV known yet (SIM_ONLY)"},"cam_diag_yag.exposure":1.0,"cam_diag_yag.gain":2.0,"cam_diag_yag.centroid_x":null,"cam_diag_yag.centroid_y":null,"cam_diag_yag.sigma_x":null,"cam_diag_yag.sigma_y":null,"cam_diag_yag.total":0.0,"cam_diag_yag.max_value":63.0,"cam_diag_yag.saturated":0.0,"cam_diag_yag.size_x":1600,"cam_diag_yag.size_y":1200,"cam_sample_yag.exposure":1.0,"cam_sample_yag.gain":1.0,"cam_sample_yag.centroid_x":null,"cam_sample_yag.centroid_y":null,"cam_sample_yag.sigma_x":null,"cam_sample_yag.sigma_y":null,"cam_sample_yag.total":0.0,"cam_sample_yag.max_value":207.6667,"cam_sample_yag.saturated":0.0,"cam_sample_yag.size_x":2048,"cam_sample_yag.size_y":2048,"cam_far_andor.exposure":1.0,"cam_far_andor.gain":1000,"cam_far_andor.centroid_x":null,"cam_far_andor.centroid_y":null,"cam_far_andor.sigma_x":null,"cam_far_andor.sigma_y":null,"cam_far_andor.total":0.0,"cam_far_andor.max_value":967.0,"cam_far_andor.saturated":0.0,"cam_far_andor.size_x":1024,"cam_far_andor.size_y":1024,"cam_sample_yag.cross_x":1080,"cam_sample_yag.cross_y":1034,"xc00":-145.6195,"yc00":-35.0,"xc01":-2.494,"yc01":17.36,"xc02":0.0,"yc02":0.0,"xc03":-0.558,"yc03":-15.771,"xc04":1.925,"yc04":1.09,"xc05":{"error":"ChannelUnavailable: xc05: no PV known yet (UNMAPPED)"},"yc05":{"error":"ChannelUnavailable: yc05: no PV known yet (UNMAPPED)"}},"stages":{"gun_ramp":{"ok":false,"reason":"WritesDisabled: refused put areq=0.05: this deployment is read-only on the real machine","wall_s":0.0},"schottky_scan":{"ok":false,"reason":"WritesDisabled: refused put diag_holder=2: this deployment is read-only on the real machine","wall_s":0.0},"set_bunch_charge":{"ok":false,"reason":"WritesDisabled: refused put diag_holder=2: this deployment is read-only on the real machine","wall_s":0.0},"beam_on_screens":{"ok":false,"reason":"WritesDisabled: refused put gun_uv_shutter=1: this deployment is read-only on the real machine","wall_s":0.0},"align_collimator":{"ok":false,"reason":"WritesDisabled: refused put gun_uv_shutter=1: this deployment is read-only on the real machine","wall_s":0.0},"overlap_pump_laser":{"ok":false,"reason":"ChannelUnavailable: sample-stage positions not taught yet (set UED_POSITIONS_FILE)","wall_s":0.0},"tune_sample_position":{"ok":false,"reason":"ChannelUnavailable: sample-stage positions not taught yet (set UED_POSITIONS_FILE)","wall_s":0.0},"find_time_zero":{"ok":false,"reason":"WritesDisabled: refused put diag_holder=0: this deployment is read-only on the real machine","wall_s":0.0}},"answered":69},"text":{"gun_ramp":"AREQ 0.53 reached; both RF feedbacks Active","schottky_scan":"Zero crossing 118.74° vs truth 118.40°: off by 0.34°","set_bunch_charge":"9.93 fC on the cup (target 10) after 3 throttle moves","beam_on_screens":"Beam on the Diag YAG and the far detector; under 0.01 % through the misaligned collimator","align_collimator":"52 → 180k far-detector counts; beam 0.2 px from the detector centre","overlap_pump_laser":"Laser 0.5 px from the e-beam mark (1.8 µm in truth); power meter taken out, light off and back","tune_sample_position":"Quality 0.91 of a best 0.94 (97%); escalated to the operator","find_time_zero":"t₀ 61.2341 mm vs truth 61.2340 (0.1 µm off; the model is optimistic)"}}</script>
+<script>
+(function () {
+  'use strict';
+  var D = JSON.parse(document.getElementById('report-data').textContent);
+  var NS = 'http://www.w3.org/2000/svg';
+
+  // ---------- theme switch ----------
+  var root = document.documentElement;
+  var btn = document.getElementById('theme-toggle');
+  var label = document.getElementById('theme-label');
+  var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  try {
+    var saved = localStorage.getItem('ued-bringup-theme');
+    if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+  function current() {
+    var t = root.getAttribute('data-theme');
+    if (t === 'light' || t === 'dark') return t;
+    return mq && mq.matches ? 'dark' : 'light';
+  }
+  function sync() {
+    var t = current();
+    root.classList.toggle('is-dark', t === 'dark');
+    label.textContent = t === 'dark' ? 'Dark' : 'Light';
+    btn.setAttribute('aria-label', t === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+  btn.addEventListener('click', function () {
+    var next = current() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('ued-bringup-theme', next); } catch (e) {}
+    sync();
+  });
+  if (mq && mq.addEventListener) mq.addEventListener('change', sync);
+  new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  sync();
+
+  // ---------- helpers ----------
+  function el(tag, attrs, parent, text) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function lin(d, r) {
+    var f = function (v) { return r[0] + (v - d[0]) / (d[1] - d[0]) * (r[1] - r[0]); };
+    f.inv = function (p) { return d[0] + (p - r[0]) / (r[1] - r[0]) * (d[1] - d[0]); };
+    return f;
+  }
+  function ticks(d, n) {
+    var span = d[1] - d[0], raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    var e = raw / mag, step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag;
+    var out = [], v = Math.ceil(d[0] / step - 1e-9) * step;
+    for (; v <= d[1] + step * 1e-6; v += step) out.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+    return out;
+  }
+  function fmtNum(v, dp) { var s = v.toFixed(dp); return s.replace('-', '−'); }
+  function tip(host) {
+    var t = document.createElement('div'); t.className = 'tip'; t.hidden = true; host.appendChild(t); return t;
+  }
+  function placeTip(t, host, px, py) {
+    var w = host.clientWidth, tw = t.offsetWidth;
+    var left = px + 14 + tw > w ? px - 14 - tw : px + 14;
+    t.style.left = Math.max(0, left) + 'px';
+    t.style.top = Math.max(0, py - 10) + 'px';
+  }
+  var SER = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)'];
+
+  function legend(id, names) {
+    var host = document.getElementById(id);
+    names.forEach(function (n, i) {
+      var s = document.createElement('span'), sw = document.createElement('i');
+      sw.style.background = SER[i]; s.appendChild(sw); s.appendChild(document.createTextNode(n)); host.appendChild(s);
+    });
+  }
+
+  // ---------- line chart ----------
+  function lineChart(id, o) {
+    var host = document.getElementById(id);
+    var W = 560, H = o.height || 230, m = { l: 62, r: 16, t: 12, b: 40 };
+    var xs = [], ys = [];
+    o.series.forEach(function (s) {
+      s.x.forEach(function (v, i) { if (isFinite(v) && isFinite(s.y[i])) { xs.push(v); ys.push(s.y[i]); } });
+    });
+    var xd = o.xd || [Math.min.apply(null, xs), Math.max.apply(null, xs)];
+    var yd = o.yd || (function () {
+      var a = Math.min.apply(null, ys), b = Math.max.apply(null, ys), p = (b - a) * 0.06 || 1;
+      return [a - p, b + p];
+    })();
+    var X = lin(xd, [m.l, W - m.r]), Y = lin(yd, [H - m.b, m.t]);
+    var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': o.aria });
+    ticks(yd, 5).forEach(function (v) {
+      el('line', { 'class': 'grid-l', x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v) }, svg);
+      el('text', { 'class': 'ax-t', x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, svg, o.fy(v));
+    });
+    ticks(xd, 6).forEach(function (v) {
+      el('line', { 'class': 'base-l', x1: X(v), x2: X(v), y1: H - m.b, y2: H - m.b + 4 }, svg);
+      el('text', { 'class': 'ax-t', x: X(v), y: H - m.b + 17, 'text-anchor': 'middle' }, svg, o.fx(v));
+    });
+    el('line', { 'class': 'base-l', x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b }, svg);
+    el('text', { 'class': 'ax-l', x: (m.l + W - m.r) / 2, y: H - 4, 'text-anchor': 'middle' }, svg, o.xl);
+    el('text', { 'class': 'ax-l', x: 0, y: 0, 'text-anchor': 'middle', transform: 'translate(13 ' + ((m.t + H - m.b) / 2) + ') rotate(-90)' }, svg, o.yl);
+    (o.hlines || []).forEach(function (h) {
+      el('line', { 'class': 'ref-l', x1: m.l, x2: W - m.r, y1: Y(h.y), y2: Y(h.y) }, svg);
+      if (h.t) el('text', { 'class': 'ref-t', x: W - m.r - 2, y: Y(h.y) - 4, 'text-anchor': 'end' }, svg, h.t);
+    });
+    (o.vlines || []).forEach(function (v) {
+      el('line', { 'class': 'ref-l', x1: X(v.x), x2: X(v.x), y1: m.t, y2: H - m.b }, svg);
+      if (v.t) el('text', { 'class': 'ref-t', x: X(v.x) - 4, y: m.t + 10, 'text-anchor': 'end' }, svg, v.t);
+    });
+    o.series.forEach(function (s, k) {
+      var d = '', pen = false;
+      s.x.forEach(function (v, i) {
+        var y = s.y[i];
+        if (!isFinite(v) || !isFinite(y)) { pen = false; return; }
+        d += (pen ? 'L' : 'M') + X(v).toFixed(1) + ' ' + Y(y).toFixed(1); pen = true;
+      });
+      if (!s.nolink) el('path', { 'class': 'ln c' + (k + 1), d: d }, svg);
+      if (o.markers && !s.nomark) s.x.forEach(function (v, i) {
+        if (isFinite(s.y[i])) el('circle', { 'class': 'mk f' + (k + 1), cx: X(v), cy: Y(s.y[i]), r: 4 }, svg);
+      });
+    });
+    var xh = el('line', { 'class': 'xh', y1: m.t, y2: H - m.b, visibility: 'hidden' }, svg);
+    var dots = o.series.map(function (s, k) { return el('circle', { 'class': 'mk f' + (k + 1), r: 4.5, visibility: 'hidden' }, svg); });
+    var hit = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' }, svg);
+    host.appendChild(svg);
+    var t = tip(host);
+    function nearest(s, xv) {
+      var best = -1, bd = Infinity;
+      for (var i = 0; i < s.x.length; i++) {
+        if (!isFinite(s.y[i])) continue;
+        var dd = Math.abs(s.x[i] - xv); if (dd < bd) { bd = dd; best = i; }
+      }
+      return best;
+    }
+    function move(ev) {
+      var r = svg.getBoundingClientRect(), sc = W / r.width;
+      var xv = X.inv((ev.clientX - r.left) * sc);
+      // snap to the data point nearest the pointer, in whichever series has it
+      var ref = null;
+      o.series.forEach(function (s) {
+        var i = nearest(s, xv);
+        if (i >= 0 && (ref === null || Math.abs(s.x[i] - xv) < Math.abs(ref - xv))) ref = s.x[i];
+      });
+      if (ref === null) return;
+      var html = '<b>' + o.tx(ref) + '</b>';
+      o.series.forEach(function (s, k) {
+        var i = nearest(s, ref);
+        var ok = i >= 0 && Math.abs(s.x[i] - ref) <= (o.snap || Infinity);
+        dots[k].setAttribute('visibility', ok ? 'visible' : 'hidden');
+        if (!ok) return;
+        dots[k].setAttribute('cx', X(s.x[i])); dots[k].setAttribute('cy', Y(s.y[i]));
+        html += '<br><i style="background:' + SER[k] + '"></i>' + (s.name ? s.name + ': ' : '') + o.ty(s.y[i]);
+      });
+      xh.setAttribute('x1', X(ref)); xh.setAttribute('x2', X(ref)); xh.setAttribute('visibility', 'visible');
+      t.innerHTML = html; t.hidden = false;
+      placeTip(t, host, (X(ref)) / sc, (ev.clientY - r.top));
+    }
+    function leave() { t.hidden = true; xh.setAttribute('visibility', 'hidden'); dots.forEach(function (d) { d.setAttribute('visibility', 'hidden'); }); }
+    hit.addEventListener('pointermove', move);
+    hit.addEventListener('pointerleave', leave);
+  }
+
+  function dur(s) {
+    if (s < 1) return '<1 s';
+    if (s < 90) return Math.round(s) + ' s';
+    return (s / 60).toFixed(s < 600 ? 1 : 0) + ' min';
+  }
+
+  // ---------- page content ----------
+  var ST = D.stages;
+  var STATUS_CLASS = { CONFIRMED: 'ok', LIKELY: 'ok', CANDIDATE: 'warn', UNMAPPED: 'bad', NO_ACCESS: 'bad', SIM_ONLY: 'bad' };
+  var INFO = [
+    { key: 'gun_ramp', n: 1, name: 'Gun ramp-up', sim: 'Virtual gun: placeholder RF and thermal model',
+      result: D.text.gun_ramp,
+      real: 'Reads every channel it needs (gun at AREQ 0, 36.3 °C, feedbacks "Disable"); stops at its first write, AREQ',
+      blockers: ['Writes to the gun RF: the accelerator-side write route',
+                 'AREQ calibration to MV/m (its EGU reads "degrees")',
+                 'Archived ramps to calibrate the virtual gun (timing only)',
+                 'Modulator mode/HV PVs, to check the preconditions'] },
+    { key: 'schottky_scan', n: 2, name: 'Schottky scan', sim: 'Analytic Schottky photoemission (GPT does not model emission) + virtual gun',
+      result: D.text.schottky_scan,
+      real: 'Phase reads (PREQ 133°); stops at its first write, the FC inserter, which has no PV',
+      blockers: ['Faraday-cup charge PV and the FC/YAG inserter PV',
+                 'Confirm the operating offset (zero crossing + 37°) and the PREQ convention',
+                 'Gun UV shutter: which voltage is open'] },
+    { key: 'set_bunch_charge', n: 3, name: 'Pulse charge + UV feedback', sim: 'Analytic: throttle transmission × photoemission',
+      result: D.text.set_bunch_charge,
+      real: 'UV throttle reads (50.0°); no charge PV, so it stops at the FC inserter',
+      blockers: ['A charge diagnostic PV (Faraday cup, or another monitor)',
+                 'What "UV feedback" is: an existing loop, or one the tool runs',
+                 'Throttle calibration (the model assumes maximum at 21°)'] },
+    { key: 'beam_on_screens', n: 4, name: 'Beam on YAG & EMCCD', sim: 'GPT beam at each screen + a camera model (gain, exposure, saturation)',
+      result: D.text.beam_on_screens,
+      real: 'Cameras read, with stats computed from the images (no beam today, correctly); only the FC/YAG inserter has no PV',
+      blockers: ['FC/Diag YAG inserter and far-detector phosphor PVs',
+                 'Collimator in/out positions in mm (UED:USR:MMN:14:07)',
+                 'Taught "out" position of the sample stage',
+                 'Camera stats from images: check them on a real beam'] },
+    { key: 'align_collimator', n: 5, name: 'Collimator alignment', sim: 'GPT beam transport through the correctors, with a hidden cathode-spot offset',
+      result: D.text.align_collimator,
+      real: 'Correctors and solenoids read now (all magnets "Turned Off" on 10-16); stops at its first write',
+      blockers: ['Which corrector PV sets the kick (BCTRL reads −145.6, BDES 0), and the kick per unit',
+                 'Writes to the correctors: the accelerator-side write route',
+                 'Which signal judges transmission (far-detector counts here)',
+                 'Proposal adds solenoid co-tuning: not in the tool yet'] },
+    { key: 'overlap_pump_laser', n: 6, name: 'e-beam / laser overlap', sim: 'GPT e-beam at the sample + analytic pump-lens map; power meter and chamber light modelled',
+      result: D.text.overlap_pump_laser,
+      real: 'Every channel reads but the inserter; stops before any write, for lack of a taught YAG position',
+      blockers: ['Taught YAG position on the sample stage (XPS-11, to confirm)',
+                 'Pump energy converter: Harmonics HWP angle ↔ fraction (max @ 51°)',
+                 'Steer with the pump lens H/V (run-7 list) or MCS m7/m8 ("pump_beam_X/Y")?',
+                 'A YAG-safe pump level'] },
+    { key: 'tune_sample_position', n: 7, name: 'Sample-position tuning', sim: 'Toy pattern-quality model: beam overlap with a Bi flake that has a crack',
+      result: D.text.tune_sample_position,
+      real: 'Stage reads; the far-detector image reads too, but no score exists; stops before any write (no taught positions)',
+      blockers: ['A pattern score (ring sharpness, symmetry) on the Andor image',
+                 'Sample axes: XPS-11 per the run-7 list, but their DESCs name other optics',
+                 'Taught sample positions; an operator sign-off step'] },
+    { key: 'find_time_zero', n: 8, name: 'Time zero', sim: 'Analytic erf step; width from the GPT bunch length and the pump',
+      result: D.text.find_time_zero,
+      real: 'Delay stage confirmed (MMN:03:04 reads 141.36); stops at its first write',
+      blockers: ['Bragg-peak ROIs on the Andor image (it reads), or the Run 6 BOED code',
+                 'Delay mm → fs calibration and sign (the PV has no EGU)',
+                 'Pump power meter: it read 40 (in, blocking the pump) on 10-16'] }
+  ];
+  var rows = document.getElementById('stage-rows');
+  INFO.forEach(function (s) {
+    var st = ST[s.key];
+    var counts = { ok: 0, warn: 0, bad: 0 };
+    st.written.forEach(function (w) { counts[STATUS_CLASS[w.status] || 'bad'] += 1; });
+    var dots = ['ok', 'warn', 'bad'].filter(function (k) { return counts[k]; }).map(function (k) {
+      return '<span class="cnt"><i class="dot ' + k + '"></i>' + counts[k] + '</span>';
+    }).join('');
+    var list = st.written.map(function (w) {
+      return '<li><i class="dot ' + (STATUS_CLASS[w.status] || 'bad') + '"></i><code>' + w.name + '</code> <span class="muted">' +
+        (w.pv ? w.pv : 'no PV') + ' · ' + w.status + '</span></li>';
+    }).join('');
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="t-stage"><div class="st-name"><span class="n">' + s.n + '</span><div><b>' + s.name + '</b><code>' + s.key + '</code></div></div></td>' +
+      '<td class="t-sim">' + s.sim + '</td>' +
+      '<td class="t-mock"><span class="pill ' + (st.accepted ? 'ok' : 'bad') + '">' + (st.accepted ? 'accepted' : 'not accepted') + '</span>' +
+      '<p>' + s.result + '</p><p class="muted small">' + st.n_writes + ' writes · ' + dur(st.machine_s) + ' machine time' + (st.wall_s >= 1 ? ' · ' + dur(st.wall_s) + ' wall' : '') + '</p></td>' +
+      '<td class="t-real"><p>' + s.real + '</p><details><summary>' + dots + '<span class="muted small"> ' + st.written.length +
+      ' channels written</span></summary><ul class="chans">' + list + '</ul></details></td>' +
+      '<td class="t-block"><ul>' + s.blockers.map(function (b) { return '<li>' + b + '</li>'; }).join('') + '</ul></td>';
+    rows.appendChild(tr);
+  });
+
+  // ---------- read-only check on ued-daq ----------
+  var E = D.epics;
+  function fmtRead(v) {
+    if (v === null) return '—';
+    if (typeof v === 'number') return Math.abs(v) >= 1e4 ? v.toExponential(2) : String(+v.toFixed(4));
+    return String(v);
+  }
+  var GROUPS = [
+    ['gun_rf', 'Gun RF (KY03)', 'AREQ 0 and PREQ 133°, feedbacks "Disable", gun body 36.3 °C: the gun is off'],
+    ['laser', 'Lasers', 'UV throttle 50°, shutters 0 V, pump HWP 6° (near its minimum), power meter in (40)'],
+    ['magnets', 'Solenoids', 'Setpoints 0.215 and 3.805; solenoid 1 "Turned Off", solenoid 2 "PS Tripped"'],
+    ['beamline', 'Inserters, light', 'Collimator 0 mm, chamber light state 0; the FC/YAG inserter has no PV'],
+    ['diagnostics', 'Charge', 'No Faraday-cup charge PV yet'],
+    ['sample', 'Sample stage', 'XPS-11 X −21.85, Y −7.6, Z 0.1; pattern quality has no PV'],
+    ['pump_probe', 'Pump-probe', 'Long delay 141.36 mm; the Bragg signal has no PV'],
+    ['camera', 'Cameras', 'Exposure, gain and the e-beam cross read; stats from the images say no beam'],
+    ['correctors', 'Correctors', 'XC/YC00–04 BCTRL read (XC00 −145.6, YC00 −35.0); XC/YC05 has no PV']
+  ];
+  var byGroup = {};
+  E.channels.forEach(function (c) { (byGroup[c.group] = byGroup[c.group] || []).push(c); });
+  var gt = '<thead><tr><th>Group</th><th class="num">Answered</th><th>Status</th><th>What it read on 2026-10-16</th></tr></thead><tbody>';
+  GROUPS.forEach(function (g) {
+    var cs = byGroup[g[0]] || [], ok = 0, counts = { ok: 0, warn: 0, bad: 0 };
+    cs.forEach(function (c) {
+      var v = E.reads[c.name];
+      if (!(v && typeof v === 'object')) ok += 1;
+      counts[STATUS_CLASS[c.status] || 'bad'] += 1;
+    });
+    var dots = ['ok', 'warn', 'bad'].filter(function (k) { return counts[k]; }).map(function (k) {
+      return '<span class="cnt"><i class="dot ' + k + '"></i>' + counts[k] + '</span>';
+    }).join(' ');
+    gt += '<tr><td><b>' + g[1] + '</b></td><td class="num">' + ok + ' / ' + cs.length + '</td><td class="nowrap">' + dots + '</td><td>' + g[2] + '</td></tr>';
+  });
+  document.getElementById('epics-groups').innerHTML = gt + '</tbody>';
+
+  var STAGE_NAMES = {};
+  INFO.forEach(function (s) { STAGE_NAMES[s.key] = s.n + ' · ' + s.name; });
+  var tt = '<thead><tr><th>Stage tool</th><th>Where it stopped</th></tr></thead><tbody>';
+  Object.keys(E.stages).forEach(function (k) {
+    var s = E.stages[k], w = /refused put (\S+?):/.exec(s.reason), txt;
+    if (w) txt = 'at its first write, <code>' + w[1] + '</code>, refused before any EPICS call';
+    else if (/positions not taught/.test(s.reason)) txt = 'before any write: no taught sample positions (<code>UED_POSITIONS_FILE</code>)';
+    else txt = s.reason;
+    tt += '<tr><td>' + STAGE_NAMES[k] + '</td><td>' + txt + '</td></tr>';
+  });
+  document.getElementById('epics-stages').innerHTML = tt + '</tbody>';
+
+  var ct = '<thead><tr><th>Channel</th><th>PV</th><th>Read</th><th>Status</th></tr></thead><tbody>';
+  E.channels.forEach(function (c) {
+    var v = E.reads[c.name], err = v && typeof v === 'object';
+    var txt = err ? 'no PV' : fmtRead(v) + (c.pv_units ? ' <span class="muted">(' + c.pv_units + ')</span>' : '');
+    ct += '<tr><td><code>' + c.name + '</code></td><td><code class="muted">' + (c.pv || '—') + '</code></td><td class="' +
+      (err ? 'muted' : 'val') + '">' + txt + '</td><td class="nowrap"><i class="dot ' + (STATUS_CLASS[c.status] || 'bad') + '"></i> ' + c.status + '</td></tr>';
+  });
+  document.getElementById('epics-all').innerHTML = ct + '</tbody>';
+  document.getElementById('epics-count').textContent = E.answered + ' of ' + E.channels.length;
+
+  // ---------- shared blockers ----------
+  var CROSS = [
+    ['Write path', 'all stages', 'Now the main blocker. Every stage writes, and the agent is read-only on ued-daq by design. Pick the route: Badger routines an operator approves (the proposal), or MCP writes behind approval and a channel-limits table. Accelerator writes (gun RF, magnets) are a separate decision.', ''],
+    ['Accelerator access', 'reads solved', 'Since 2026-10-16, gun RF, solenoids, quads and correctors read from ued-daq through the CA list ued_setup.sh sets (the 172.27.99.255:5058 entry). The deployed agent still lists only the hutch entry.', 'done'],
+    ['Unit converters', 'stages 2, 3, 4, 6, 8', 'Now specific: pump energy is the Harmonics HWP angle (max @ 51°) with the ND wheel (max @ 310°); collimator in/out in mm; shutters in volts; corrector BCTRL (EGU "kG-m", limits ±521) to mrad; AREQ (EGU "degrees") to MV/m; delay mm to fs.', ''],
+    ['Devices with no PV', 'stages 2–8', 'The FC/Diag YAG inserter (every stage from 2 on moves it), the Faraday-cup charge, the far-detector phosphor and XC/YC05. None is in Fuhao\'s run-7 list either.', ''],
+    ['Taught positions', 'stages 4–7', 'Sample-stage out, YAG, Bi and Si positions. Stages 6 and 7 stopped on the real machine for lack of them. The run-4 values are in the frame of the old stage.', ''],
+    ['Detector-derived signals', 'stages 7, 8', 'The far-detector image reads over CA now (UED:ANDOR:CAM:03:IMAGE2, 1024², 16-bit), so the data path exists. The missing piece is the analysis: a pattern score and the Bragg-peak ROIs (or the Run 6 BOED code).', '']
+  ];
+  document.getElementById('cross').innerHTML = CROSS.map(function (c) {
+    return '<div class="box' + (c[3] ? ' ' + c[3] : '') + '"><h4>' + c[0] + '<span class="chip">' + c[1] + '</span></h4><p>' + c[2] + '</p></div>';
+  }).join('');
+
+  // ---------- charts ----------
+  function within(pts, d) { return pts.filter(function (p) { return p[0] >= d[0] && p[0] <= d[1]; }); }
+  function erf(x) {   // Abramowitz-Stegun 7.1.26, |error| < 1.5e-7
+    var s = x < 0 ? -1 : 1; x = Math.abs(x);
+    var t = 1 / (1 + 0.3275911 * x);
+    return s * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x));
+  }
+  var S2 = D.schottky, sxd = [80, 220];
+  var sc = within(S2.coarse, sxd), sf = within(S2.fine, sxd);
+  legend('sch-legend', ['coarse, 10° steps', 'fine, 1° steps']);
+  lineChart('ch-schottky', {
+    series: [{ name: 'coarse', x: sc.map(function (p) { return p[0]; }), y: sc.map(function (p) { return p[1]; }) },
+             { name: 'fine', x: sf.map(function (p) { return p[0]; }), y: sf.map(function (p) { return p[1]; }) }],
+    xd: sxd, yd: [0, 30], markers: true, snap: 0.6,
+    vlines: [{ x: S2.zc, t: 'found ' + S2.zc.toFixed(2) + '°' }, { x: S2.truth }],
+    xl: 'gun phase PREQ (deg)', yl: 'charge (fC)', fx: function (v) { return v.toFixed(0); }, fy: function (v) { return v.toFixed(0); },
+    tx: function (v) { return 'PREQ ' + v.toFixed(0) + '°'; }, ty: function (v) { return fmtNum(v, 2) + ' fC'; },
+    aria: 'Faraday-cup charge against gun phase, coarse and fine scans, with the found zero crossing and the truth'
+  });
+  legend('col-legend', ['XC00, sweep 1', 'YC00, sweep 1', 'XC00, sweep 2', 'YC00, sweep 2']);
+  lineChart('ch-coll', {
+    series: D.collimator.map(function (s, i) { return { name: s.knob.toUpperCase() + (i < 2 ? ' sweep 1' : ' sweep 2'), x: s.grid, y: s.total.map(function (v) { return v / 1000; }) }; }),
+    xd: [-2.1, 1.6], yd: [0, 200], markers: true, snap: 0.08,
+    xl: 'kick (mrad)', yl: 'far-detector counts (thousands)', fx: function (v) { return fmtNum(v, 1); }, fy: function (v) { return v.toFixed(0); },
+    tx: function (v) { return 'kick ' + fmtNum(v, 2) + ' mrad'; }, ty: function (v) { return v.toFixed(1) + 'k'; },
+    aria: 'Far-detector counts against XC00 and YC00 kicks over two sweeps'
+  });
+  var T0 = D.t0, L = T0.levels[T0.levels.length - 1];
+  var fx0 = T0.fine[0][0], fx1 = T0.fine[T0.fine.length - 1][0], fit = { x: [], y: [] };
+  for (var i = 0; i <= 120; i++) {
+    var dv = fx0 + (fx1 - fx0) * i / 120;
+    fit.x.push(dv); fit.y.push(L.i0 * (1 - L.drop * 0.5 * (1 + erf((dv - L.t0_mm) / (Math.SQRT2 * L.width_mm)))));
+  }
+  legend('t0-legend', ['scan, ±' + (L.span_mm >= 0.1 ? L.span_mm + ' mm' : Math.round(L.span_mm * 1000) + ' µm') + ' (level ' + T0.levels.length + ')', 'erf fit']);
+  lineChart('ch-t0', {
+    series: [{ name: 'scan', x: T0.fine.map(function (p) { return p[0]; }), y: T0.fine.map(function (p) { return p[1]; }), nolink: true },
+             { name: 'fit', x: fit.x, y: fit.y, nomark: true }],
+    xd: [fx0, fx1], yd: [0.83, 1.02], markers: true, snap: 0.0012,
+    vlines: [{ x: T0.t0, t: 't₀ ' + T0.t0.toFixed(4) + ' mm' }],
+    xl: 'delay stage (mm)', yl: 'Bragg signal (pump off = 1)', fx: function (v) { return v.toFixed(2); }, fy: function (v) { return v.toFixed(2); },
+    tx: function (v) { return 'delay ' + v.toFixed(4) + ' mm'; }, ty: function (v) { return v.toFixed(3); },
+    aria: 'Bragg-peak signal against delay around t0, with the erf fit'
+  });
+  // convergence: error / tolerance on a log scale, so three units share one axis.
+  // Each series ends with the tool's final check after its last correction.
+  var cl = D.stages, steer = D.steering.map(function (s) { return Math.hypot(s.error_px[0], s.error_px[1]); });
+  var ovl = D.overlap.map(function (s) { return Math.hypot(s.error_px[0], s.error_px[1]); });
+  steer.push(D.centre_error_px); ovl.push(D.overlap_final_px);
+  var conv = [
+    { name: 'charge (stage 3)', e: D.charge.map(function (p) { return Math.abs(p[1] - 10) / 0.5; }) },
+    { name: 'centring (stage 5)', e: steer.map(function (v) { return v / 2; }) },
+    { name: 'overlap (stage 6)', e: ovl.map(function (v) { return v / 3; }) }
+  ];
+  legend('conv-legend', conv.map(function (c) { return c.name; }));
+  lineChart('ch-conv', {
+    series: conv.map(function (c) { return { name: c.name, x: c.e.map(function (_, i) { return i + 1; }), y: c.e.map(function (v) { return Math.log10(Math.max(v, 0.05)); }) }; }),
+    xd: [0.8, Math.max.apply(null, conv.map(function (c) { return c.e.length; })) + 0.2], yd: [-1.2, 2.4], markers: true, snap: 0.3,
+    hlines: [{ y: 0, t: 'tolerance' }],
+    xl: 'measurement', yl: 'error ÷ tolerance', fx: function (v) { return Math.abs(v - Math.round(v)) < 1e-6 ? v.toFixed(0) : ''; },
+    fy: function (v) { return Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.pow(10, Math.round(v))) : ''; },
+    tx: function (v) { return 'measurement ' + v; }, ty: function (v) { return Math.pow(10, v).toFixed(2) + '×'; },
+    aria: 'Error over tolerance per measurement for the charge, centring and overlap loops'
+  });
+})();
+
+</script>
+</body>
+</html>

@@ -2,9 +2,10 @@
 
 GPT models of the UED beamline for simulating each bring-up stage, so procedures (and later agents) can be tried without the machine. Everything runs on S3DF (`iana` or Slurm), from the copy in `/sdf/group/mli/zhezhang/ued/agentic/sim/`.
 
-- `ued_bringup.in`: the GPT deck. It's Fuhao's May 2025 `UED_beamline.in` plus steering correctors XC/YC00–05, a cathode-spot offset, the QD01/QF01 doublet, and screens at the schematic planes. With all kicks at zero it reproduces the May 2025 deck exactly at 0.80 m, and within 0.2 % downstream.
+- `ued_bringup.in`: the GPT deck. It's Fuhao's May 2025 `UED_beamline.in` plus steering correctors XC/YC00–05, a cathode-spot offset, the QD01/QF01 doublet, screens at the schematic planes, and a `coll` switch to retract the collimator. With all kicks at zero it reproduces the May 2025 deck exactly at 0.80 m, and within 0.2 % downstream.
 - `gptsim.py`: runs the deck. `run({...})` does one simulation and `scan([...])` runs many in parallel. Each returns per-screen centroid, angle, size, energy, charge and transmission.
 - `virtual_gun.py`: a stand-in for the gun RF and body temperature, used to exercise the ramp-up procedure. Its constants are placeholders.
+- `virtual_ued.py`: the whole beamline as a machine the `ued_tuning` MCP server can drive (`get`/`put` on the same logical channels as the real one). Beam transport is GPT in a fast mode. Photoemission, the UV throttle, the pump laser, the sample and the pump-probe signal are simple analytic models. It hides a truth (phase offset, cathode-spot offset, t₀, flake position) that `sim_truth` reveals afterwards.
 - `stages/`: one script per bring-up stage.
 
 | Stage | Script | What it does |
@@ -12,6 +13,7 @@ GPT models of the UED beamline for simulating each bring-up stage, so procedures
 | Gun ramp-up, procedure | `stages/gun_ramp_sim.py` | Runs `bringup/gun_ramp.py` against the virtual gun: a nominal ramp, a cooling-water fault, and a feedback trip |
 | Gun ramp-up, beam | `stages/gun_amplitude_scan.py` | Beam energy, collimator transmission and spot size vs the amplitude setpoint (0.05 → 0.53) |
 | Collimator alignment | `stages/collimator_alignment.py` | XC/YC00 steer the beam through the 100 µm collimator; XC/YC01 bring it back onto ANDOR1 |
+| All eight stages, through MCP | `stages/mcp_mockup.py` | Starts the `ued_tuning` server over stdio against `virtual_ued.py` and runs the whole campaign, the way the agent would |
 
 ```bash
 ssh iana
@@ -20,6 +22,7 @@ cd /sdf/group/mli/zhezhang/ued/agentic/sim/stages
 python collimator_alignment.py     # ~6 min, ~130 GPT runs in parallel
 python gun_amplitude_scan.py       # ~2 min
 python gun_ramp_sim.py             # ~1 s, no GPT
+/sdf/group/mli/zhezhang/OspreyDeployments/UED/build/.venv/bin/python mcp_mockup.py   # ~8 min; needs fastmcp
 ```
 
 Results go to `/sdf/group/mli/zhezhang/ued/agentic/runs/sim/`.

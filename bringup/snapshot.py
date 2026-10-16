@@ -22,15 +22,17 @@ from epics import caget_many  # noqa: E402  (read-only: no caput imported)
 from ued_pvs import CHANNELS  # noqa: E402
 
 TIMEOUT = 2.0
+ENUM_SUFFIXES = (':Acquire_RBV', ':PFBENB', ':AFBENB', ':PFBST', ':AFBST')
 
 
 def _read(pvs):
     """Read PVs in parallel: one connection timeout in total, not per PV.
 
-    Acquire_RBV is an enum, read as its label ("Acquiring"/"Done").
+    Enums are read as their labels: Acquire_RBV ("Acquiring"/"Done") and
+    the gun feedback enables and states ("Disable"/"Active").
     pyepics prints "cannot connect" on stdout; keep stdout clean for --json.
     """
-    enums = [pv for pv in pvs if pv.endswith(':Acquire_RBV')]
+    enums = [pv for pv in pvs if pv.endswith(ENUM_SUFFIXES)]
     plain = [pv for pv in pvs if pv not in enums]
     with contextlib.redirect_stdout(sys.stderr):
         vals = dict(zip(plain, caget_many(plain, timeout=TIMEOUT)))

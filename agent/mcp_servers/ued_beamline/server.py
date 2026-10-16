@@ -38,8 +38,8 @@ mcp = FastMCP(
         "ued_devices lists the mapped devices: each has a key, a group, the "
         "current PV, the PV the 2023 run-4 scripts used, and how sure the "
         "mapping is (CONFIRMED, LIKELY, CANDIDATE, UNMAPPED, or NO_ACCESS for "
-        "accelerator PVs that ued-daq cannot reach). ued_snapshot reads their "
-        "current values. Nothing here writes; this deployment never writes PVs."
+        "PVs that ued-daq cannot reach). ued_snapshot reads their current "
+        "values. Nothing here writes; this deployment never writes PVs."
     ),
 )
 

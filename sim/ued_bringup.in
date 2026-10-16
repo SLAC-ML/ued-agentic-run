@@ -8,6 +8,7 @@
 #   gunAmp gunPhaseDeg                gun field [V/m] and phase [deg]
 #   sol1Fac sol2Fac                   solenoid scale factors
 #   x0 y0                             cathode spot offset [m]
+#   coll                              collimator in (1) or retracted (0)
 #   xc00 yc00 ... xc05 yc05           corrector kicks [mrad at 3.098 MeV]
 #   gq1 gq2                           quad doublet gradients [T/m]
 #   dz zstop                          extra screens every dz up to zstop
@@ -51,8 +52,9 @@ sol2B = sol2Fac/12*0.385;        # micro-focusing solenoid
 map1D_B("wcs", "z", 1.005, "nano_ued_solenoid.gdf", "z", "Bz", sol2B);
 
 ################ Collimator (100 um hole) ###########################
-forwardscatter("wcs", "I", "remove", 0);
-scatteriris("wcs", "z", 0.5575, 47e-6, 1) scatter="remove";
+# coll=0 retracts it (the beam goes through untouched).
+if (coll != 0) forwardscatter("wcs", "I", "remove", 0);
+if (coll != 0) scatteriris("wcs", "z", 0.5575, 47e-6, 1) scatter="remove";
 
 ################ Steering correctors ################################
 # Bmultipole dipole component, 5 cm long. The kick is an angle at the

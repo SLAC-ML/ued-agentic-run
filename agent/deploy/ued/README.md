@@ -73,4 +73,4 @@ The agent never writes PVs on `ued-daq`, which can reach every hutch IOC with wr
 
 `mcp_servers/ued_beamline` has two tools: `ued_devices`, the device map, and `ued_snapshot`, a live read with `caget` only. Both reuse `bringup/` from the ued-agentic-run repo, deployed at `/sdf/group/mli/zhezhang/ued/agentic/bringup`.
 
-Accelerator PVs (gun RF, magnets, correctors) don't answer from `ued-daq`; they need `testfac-srv01`.
+Accelerator PVs (gun RF, magnets, correctors) answer from `ued-daq` with the address list `/cds/group/pcds/setup/ued_setup.sh` sets, `172.21.36.255:5064 172.27.99.255:5058` (since 2026-10-16). The profile gives the agent both entries for reads. The `.env` on S3DF carries the same `EPICS_CA_ADDR_LIST` line, so change it there too, then rebuild and restart the agent.
