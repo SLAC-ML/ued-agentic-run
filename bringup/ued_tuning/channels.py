@@ -50,7 +50,7 @@ def _ch(name, group, units, writable, desc, pv, status, pv_units='',
 _LIST = [
     # Gun RF (klystron KY03). The machine was off when read (AREQ 0).
     _ch('areq', 'gun_rf', '', True, 'Gun amplitude setpoint (0..0.53)',
-        'SIOC:AS01:KY03:0:AREQ', CONFIRMED, 'EGU reads "degrees"'),
+        'SIOC:AS01:KY03:0:AREQ', CONFIRMED, 'unconfirmed (EGU "degrees")'),
     _ch('preq', 'gun_rf', 'deg', True, 'Gun phase setpoint',
         'SIOC:AS01:KY03:0:PREQ', CONFIRMED),
     _ch('aact', 'gun_rf', '', False, 'Gun amplitude readback (averaged)',
@@ -182,6 +182,6 @@ for i, units in enumerate(_UNITS):
         _LIST.append(_ch(f'{plane}c{i:02d}', 'correctors', 'mrad', True,
                          f'{plane.upper()}C{i:02d} steering kick', pv,
                          CONFIRMED if units else UNMAPPED,
-                         'EGU kG-m' if units else ''))
+                         'BCTRL, EGU kG-m (unconfirmed)' if units else ''))
 
 CHANNELS = {c.name: c for c in _LIST}

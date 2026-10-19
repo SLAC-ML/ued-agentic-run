@@ -8,7 +8,8 @@ chosen by UED_TUNING_BACKEND:
   epics  the real machine, READ-ONLY: every write is refused, so a stage
          stops at its first write. Reads work where a PV is mapped.
 
-Not registered in the deployed agent yet; see the mock-up report.
+The deployed UED agent runs it with the epics backend, through the wrapper
+agent/mcp_servers/ued_tuning_mcp (registered 2026-10-16).
 Launched over stdio by ``python -m ued_tuning`` (PYTHONPATH = bringup/).
 """
 from __future__ import annotations
@@ -97,8 +98,13 @@ async def machine_channels(group: str = '') -> str:
 @mcp.tool()
 async def machine_read(names: list[str]) -> str:
     """Read logical channels (no writes). Unknown or unmapped names report
-    their error instead of a value."""
-    out = {}
+    their error instead of a value.
+
+    `units` gives the unit of each value as returned. On the real machine
+    (epics) that is the raw PV's unit, which can differ from the channel's
+    logical unit: a corrector reads its BCTRL setpoint, not a kick in mrad.
+    """
+    out, units = {}, {}
     m = machine()
     for n in names:
         try:
@@ -107,7 +113,11 @@ async def machine_read(names: list[str]) -> str:
             out[n] = stages._num(v)
         except Exception as exc:
             out[n] = {'error': f'{type(exc).__name__}: {exc}'}
-    return json.dumps({'backend': BACKEND, 'values': out})
+        ch = CHANNELS.get(n)
+        if ch is not None:
+            units[n] = (ch.pv_units or ch.units) if BACKEND == 'epics' \
+                else ch.units
+    return json.dumps({'backend': BACKEND, 'values': out, 'units': units})
 
 
 @mcp.tool()

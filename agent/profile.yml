@@ -162,6 +162,26 @@ mcp_servers:
     # prompts the operator on every call.
     permissions:
       allow: [ued_devices, ued_snapshot]
+  # The UED bring-up stage tools (Run 7 proposal, one tool per stage), on the
+  # real machine and read-only: the wrapper forces the EPICS backend, which
+  # reads with caget and refuses every write before any EPICS call, so each
+  # stage tool stops at its first write. The code lives in bringup/ued_tuning.
+  # DEVIATION: ued_tuning is the UED bring-up tuning server (read-only).
+  ued_tuning:
+    command: "{current_python_env}"
+    args: [-m, ued_tuning_mcp]
+    env:
+      PYTHONPATH: "{project_root}/build/_mcp_servers"
+      UED_BRINGUP_DIR: "${UED_BRINGUP_DIR:-/sdf/group/mli/zhezhang/ued/agentic/bringup}"
+      EPICS_CA_ADDR_LIST: "${EPICS_CA_ADDR_LIST:-172.21.36.255:5064 172.27.99.255:5058}"
+      EPICS_CA_AUTO_ADDR_LIST: "${EPICS_CA_AUTO_ADDR_LIST:-NO}"
+    # Reads run unprompted. Each stage tool asks first: none can write, but
+    # an operator should see a stage being tried on the real machine.
+    permissions:
+      allow: [ued_tuning_info, machine_channels, machine_read]
+      ask: [gun_ramp, schottky_scan, set_bunch_charge, beam_on_screens,
+            align_collimator, overlap_pump_laser, tune_sample_position,
+            find_time_zero]
   # Delete a block and its mcp_servers/<package>/ together: one without
   # the other costs every session a 20 s wait for a server that cannot start.
   # Editing either is a source change, not a build tweak: rebuild afterwards,

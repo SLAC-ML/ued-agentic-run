@@ -71,6 +71,9 @@ The agent never writes PVs on `ued-daq`, which can reach every hutch IOC with wr
 
 ## Tools
 
-`mcp_servers/ued_beamline` has two tools: `ued_devices`, the device map, and `ued_snapshot`, a live read with `caget` only. Both reuse `bringup/` from the ued-agentic-run repo, deployed at `/sdf/group/mli/zhezhang/ued/agentic/bringup`.
+Two MCP servers, both reusing `bringup/` from the ued-agentic-run repo, deployed at `/sdf/group/mli/zhezhang/ued/agentic/bringup`:
+
+- `ued_beamline` (`mcp_servers/ued_beamline`) has two tools: `ued_devices`, the device map, and `ued_snapshot`, a live read with `caget` only.
+- `ued_tuning` (`mcp_servers/ued_tuning_mcp`, a wrapper around `bringup/ued_tuning`) has the bring-up stage tools, one per stage of the Run 7 proposal. The wrapper forces the `epics` backend, which reads with `caget` and refuses every write before any EPICS call, so each stage tool stops at its first write. `ued_tuning_info`, `machine_channels` and `machine_read` run unprompted; each stage tool asks first. The simulator backend isn't offered here: rehearsals run on S3DF (`sim/stages/mcp_mockup.py`), not on the DAQ machine.
 
 Accelerator PVs (gun RF, magnets, correctors) answer from `ued-daq` with the address list `/cds/group/pcds/setup/ued_setup.sh` sets, `172.21.36.255:5064 172.27.99.255:5058` (since 2026-10-16). The profile gives the agent both entries for reads. The `.env` on S3DF carries the same `EPICS_CA_ADDR_LIST` line, so change it there too, then rebuild and restart the agent.
