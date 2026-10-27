@@ -3,7 +3,10 @@
 
 Starts `python -m ued_tuning` as its own process over stdio — the way
 Claude Code launches an MCP server — with UED_TUNING_BACKEND=sim, and calls
-the eight stage tools in campaign order through an MCP client. Every
+the eight stage tools in campaign order through an MCP client, with the
+checks and automation tools between them. The setup file
+(sim/ued_setup_sim.yaml) is copied into the run folder first, so taught
+positions saved during the run go to the copy; records go there too. Every
 request, response and wall time is recorded; at the end the sim-only
 `sim_truth` tool says how close the tuned machine is to the hidden truth.
 
@@ -16,6 +19,7 @@ import argparse
 import asyncio
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -27,22 +31,33 @@ ROOT = Path(os.environ.get('AGENTIC_ROOT',
                            '/sdf/group/mli/zhezhang/ued/agentic'))
 
 CAMPAIGN = [
+    ('check_beam_prerequisites', {}),
+    ('list_positions', {}),
     ('gun_ramp', {}),
     ('schottky_scan', {}),
-    ('set_bunch_charge', {'target_fC': 10.0}),
+    ('set_bunch_charge', {'feedback_loop_off': True}),
+    ('monitor_charge', {'samples': 5}),
     ('beam_on_screens', {}),
     ('align_collimator', {}),
+    ('plan_beam_optimization', {}),
     ('overlap_pump_laser', {}),
     ('tune_sample_position', {'sample': 'bi'}),
+    # the operator approves the pattern and the tuned spot becomes 'bi'
+    ('save_position', {'name': 'bi', 'note': 'mock-up: stage 7, approved'}),
     ('find_time_zero', {}),
 ]
 
 
 async def main(out):
+    out.mkdir(parents=True, exist_ok=True)
+    setup = out / 'ued_setup.yaml'
+    shutil.copy2(ROOT / 'sim' / 'ued_setup_sim.yaml', setup)
     env = dict(os.environ,
                UED_TUNING_BACKEND='sim',
                UED_SIM_DIR=str(ROOT / 'sim'),
                UED_BRINGUP_DIR=str(ROOT / 'bringup'),
+               UED_SETUP_FILE=str(setup),
+               UED_RECORDS_DIR=str(out / 'records'),
                PYTHONPATH=str(ROOT / 'bringup'))
     transport = StdioTransport(command=sys.executable,
                                args=['-m', 'ued_tuning'], env=env,
@@ -70,12 +85,13 @@ async def main(out):
         record['truth'] = json.loads((await c.call_tool('sim_truth', {}))
                                      .content[0].text)
         state = await c.call_tool('machine_read', {'names': [
-            'areq', 'aact', 'preq', 'gun_uv_throttle', 'fc_charge',
-            'xc00', 'yc00', 'xc01', 'yc01', 'pump_lens_h', 'pump_lens_v',
-            'pump_power_meter', 'chamber_light', 'cam_sample_yag.cross_x',
-            'cam_sample_yag.cross_y', 'sample_x', 'sample_y', 'delay']})
+            'areq', 'aact', 'preq', 'gun_uv_throttle', 'collimator',
+            'xc04', 'yc04', 'pump_lens_h', 'pump_lens_v', 'pump_hwp',
+            'pump_power_meter', 'pump_shutter', 'chamber_light',
+            'cam_sample_yag.cross_x', 'cam_sample_yag.cross_y',
+            'cam_far_andor.exposure', 'cam_far_andor.gain', 'sample_x',
+            'sample_y', 'delay', 'gv240', 'gv272', 'gv280', 'gv295']})
         record['final_state'] = json.loads(state.content[0].text)
-    out.mkdir(parents=True, exist_ok=True)
     (out / 'results.json').write_text(json.dumps(record, indent=1))
     print('DONE', out, flush=True)
 

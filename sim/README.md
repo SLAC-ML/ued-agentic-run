@@ -2,10 +2,10 @@
 
 GPT models of the UED beamline for simulating each bring-up stage, so procedures (and later agents) can be tried without the machine. Everything runs on S3DF (`iana` or Slurm), from the copy in `/sdf/group/mli/zhezhang/ued/agentic/sim/`.
 
-- `ued_bringup.in`: the GPT deck. It's Fuhao's May 2025 `UED_beamline.in` plus steering correctors XC/YC00–05, a cathode-spot offset, the QD01/QF01 doublet, screens at the schematic planes, and a `coll` switch to retract the collimator. With all kicks at zero it reproduces the May 2025 deck exactly at 0.80 m, and within 0.2 % downstream.
+- `ued_bringup.in`: the GPT deck. It's Fuhao's May 2025 `UED_beamline.in` plus steering correctors XC/YC00–05, a cathode-spot offset, the QD01/QF01 doublet, screens at the schematic planes, a `coll` switch to retract the collimator, and `collR`/`collx` for the collimator hole's radius and its offset in x (the collimator motor moves the hole across the beam). With all kicks at zero it reproduces the May 2025 deck exactly at 0.80 m, and within 0.2 % downstream.
 - `gptsim.py`: runs the deck. `run({...})` does one simulation and `scan([...])` runs many in parallel. Each returns per-screen centroid, angle, size, energy, charge and transmission.
 - `virtual_gun.py`: a stand-in for the gun RF and body temperature, used to exercise the ramp-up procedure. Its constants are placeholders.
-- `virtual_ued.py`: the whole beamline as a machine the `ued_tuning` MCP server can drive (`get`/`put` on the same logical channels as the real one). Beam transport is GPT in a fast mode. Photoemission, the UV throttle, the pump laser, the sample and the pump-probe signal are simple analytic models. It hides a truth (phase offset, cathode-spot offset, t₀, flake position) that `sim_truth` reveals afterwards.
+- `virtual_ued.py`: the whole beamline as a machine the `ued_tuning` MCP server can drive (`get`/`put` on the same logical channels as the real one). Beam transport is GPT in a fast mode; the collimator motor moves a 200 µm hole (at 90 mm, plus a hidden offset) across the beam. Photoemission, the UV throttle, the scope CH2 trace, the VCC spot, the pump laser (HWP energy, power meter, lens steering), the chamber light, the Andor through hole and its diffraction rings, the sample and the pump-probe signal are simple analytic models. It hides a truth (phase offset, cathode-spot offset, collimator hole position, t₀, flake position) that `sim_truth` reveals afterwards. Its taught positions and setpoints are in `ued_setup_sim.yaml`, which the mock-up copies into its run folder.
 - `stages/`: one script per bring-up stage.
 
 | Stage | Script | What it does |
@@ -22,7 +22,7 @@ cd /sdf/group/mli/zhezhang/ued/agentic/sim/stages
 python collimator_alignment.py     # ~6 min, ~130 GPT runs in parallel
 python gun_amplitude_scan.py       # ~2 min
 python gun_ramp_sim.py             # ~1 s, no GPT
-/sdf/group/mli/zhezhang/OspreyDeployments/UED/build/.venv/bin/python mcp_mockup.py   # ~8 min; needs fastmcp
+/sdf/group/mli/zhezhang/OspreyDeployments/UED/build/.venv/bin/python mcp_mockup.py   # ~7 min; needs fastmcp
 ```
 
 Results go to `/sdf/group/mli/zhezhang/ued/agentic/runs/sim/`.

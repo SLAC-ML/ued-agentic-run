@@ -7,11 +7,14 @@ aborting (AREQ -> 0) after 10 out-of-range readings in a row.
 
 Added on top (commented out or absent in the original):
   - the feedbacks must report Active before the ramp and at every step;
-  - the amplitude readback must track the setpoint during the ramp.
+  - the amplitude readback must track the setpoint during the ramp. AACT is
+    in kV and AREQ is dimensionless on the real machine, so the check is on
+    their ratio: calibrated over the first steps, then held within
+    readback_tol.
 
 The procedure talks to a backend with get(name), put(name, value) and
-sleep(seconds), so it runs against sim/virtual_gun.py today. There is no
-EPICS backend yet: driving the real gun needs an explicit go-ahead.
+sleep(seconds): the virtual UED, or the read-only EPICS backend, which
+refuses the first write. Driving the real gun needs an explicit go-ahead.
 
 Operator preconditions (not checked here, from the UED notes): AREQ is 0 on
 the operator panel, the modulator is in TRIG with the HV at full voltage
@@ -20,15 +23,17 @@ the operator panel, the modulator is in TRIG with the HV at full voltage
 from dataclasses import dataclass, field
 from typing import List
 
-# Machine PVs behind the backend names (from ramp_rf.py)
+# Machine PVs behind the backend names, for reference only: the live map
+# is ued_tuning/channels.py. The gun is on the TS1 klystron KY01 again
+# (2026-10, run 4's), after a spell on TS8 (KY03).
 PVS = {
-    'areq': 'SIOC:AS01:KY03:0:AREQ',          # amplitude setpoint
-    'pfb_enable': 'SIOC:AS01:KY03:0:PFBENB',  # phase feedback on
-    'afb_enable': 'SIOC:AS01:KY03:0:AFBENB',  # amplitude feedback on
-    'pfb_status': 'SIOC:AS01:KY03:0:PFBST',
-    'afb_status': 'SIOC:AS01:KY03:0:AFBST',
+    'areq': 'SIOC:AS01:KY01:0:AREQ',          # amplitude setpoint
+    'pfb_enable': 'SIOC:AS01:KY01:0:PFBENB',  # phase feedback on
+    'afb_enable': 'SIOC:AS01:KY01:0:AFBENB',  # amplitude feedback on
+    'pfb_status': 'SIOC:AS01:KY01:0:PFBST',
+    'afb_status': 'SIOC:AS01:KY01:0:AFBST',
     'gun_temp': 'APC:AS01:TM01:M2_CH2_SPARE',  # gun body temperature [C]
-    'aact': 'SIOC:AS01:KY03:0:AACT_AVGNT',    # amplitude readback (avg)
+    'aact': 'SIOC:AS01:KY01:0:AACT_AVGNT',    # amplitude readback (avg, kV)
 }
 
 AREQ_MAX = 0.53
@@ -44,7 +49,8 @@ class RampConfig:
     temp_max: float = 37.0
     max_temp_fails: int = 10
     fb_settle_s: float = 1.0
-    readback_tol: float = 0.05     # relative AACT vs AREQ (added check)
+    readback_tol: float = 0.05     # relative drift of AACT/AREQ (added)
+    calib_steps: int = 3           # steps that calibrate AACT/AREQ
     max_readback_fails: int = 5
 
 
@@ -83,6 +89,7 @@ def ramp(backend, cfg: RampConfig) -> RampResult:
 
     step_size = (cfg.target - cfg.start) / (cfg.n_steps - 1)
     temp_fails = readback_fails = 0
+    ratios, k0 = [], None           # AACT/AREQ, its calibrated value
     for step in range(1, cfg.n_steps + 1):
         while True:
             temp = backend.get('gun_temp')
@@ -101,11 +108,19 @@ def ramp(backend, cfg: RampConfig) -> RampResult:
                 return abort(step, f'{fb} went {backend.get(fb)!r}')
 
         areq, aact = backend.get('areq'), backend.get('aact')
-        if areq > 0 and abs(aact - areq) > cfg.readback_tol * areq:
+        if areq > 0 and k0 is None:
+            ratios.append(aact / areq)
+            if len(ratios) == cfg.calib_steps:
+                k0 = sorted(ratios)[len(ratios) // 2]
+                if not k0 > 0:
+                    return abort(step, f'no amplitude readback (AACT '
+                                 f'{aact:.3g} at AREQ {areq:.3f})')
+        elif areq > 0 and abs(aact / areq - k0) > cfg.readback_tol * k0:
             readback_fails += 1
             if readback_fails >= cfg.max_readback_fails:
-                return abort(step, f'readback {aact:.3f} not tracking '
-                             f'setpoint {areq:.3f}')
+                return abort(step, f'readback {aact:.4g} not tracking '
+                             f'setpoint {areq:.3f} (AACT/AREQ '
+                             f'{aact / areq:.4g}, calibrated {k0:.4g})')
         else:
             readback_fails = 0
 

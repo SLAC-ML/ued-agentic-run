@@ -9,6 +9,7 @@ On ued-daq:
 """
 import argparse
 import contextlib
+import statistics
 import json
 import os
 import sys
@@ -22,7 +23,8 @@ from epics import caget_many  # noqa: E402  (read-only: no caput imported)
 from ued_pvs import CHANNELS  # noqa: E402
 
 TIMEOUT = 2.0
-ENUM_SUFFIXES = (':Acquire_RBV', ':PFBENB', ':AFBENB', ':PFBST', ':AFBST')
+ENUM_SUFFIXES = (':Acquire_RBV', ':PFBENB', ':AFBENB', ':PFBST', ':AFBST',
+                 ':POSITION', ':MBBO_CH2_SCL', ':MBBO_CH0_SCL')
 
 
 def _read(pvs):
@@ -67,6 +69,9 @@ def fmt_value(row):
         state, exp, gain = vals
         return f'{state}, {exp:g} s, gain {gain:g}'
     v = vals[0]
+    if hasattr(v, '__len__') and not isinstance(v, str):   # a waveform
+        return f'{len(v)} pts, median {statistics.median(v):.3g} ' \
+            f'{row["units"]}'.strip()
     return f'{v:.4g} {row["units"]}'.strip() if isinstance(v, float) \
         else f'{v} {row["units"]}'.strip()
 

@@ -74,6 +74,19 @@ The agent never writes PVs on `ued-daq`, which can reach every hutch IOC with wr
 Two MCP servers, both reusing `bringup/` from the ued-agentic-run repo, deployed at `/sdf/group/mli/zhezhang/ued/agentic/bringup`:
 
 - `ued_beamline` (`mcp_servers/ued_beamline`) has two tools: `ued_devices`, the device map, and `ued_snapshot`, a live read with `caget` only.
-- `ued_tuning` (`mcp_servers/ued_tuning_mcp`, a wrapper around `bringup/ued_tuning`) has the bring-up stage tools, one per stage of the Run 7 proposal. The wrapper forces the `epics` backend, which reads with `caget` and refuses every write before any EPICS call, so each stage tool stops at its first write. `ued_tuning_info`, `machine_channels` and `machine_read` run unprompted; each stage tool asks first. The simulator backend isn't offered here: rehearsals run on S3DF (`sim/stages/mcp_mockup.py`), not on the DAQ machine.
+- `ued_tuning` (`mcp_servers/ued_tuning_mcp`, a wrapper around `bringup/ued_tuning`) has the bring-up tools:
+  - one per stage of the Run 7 proposal;
+  - automation actions: positions, camera views, the pump shutter;
+  - read-only checks and `plan_beam_optimization`.
+
+  The wrapper forces the `epics` backend, which reads with `caget` and refuses every write before any EPICS call, so each tool that writes stops at its first write. Read-only tools run unprompted; every tool that writes asks first. The positions, setpoints and safety ranges come from `/sdf/group/mli/zhezhang/ued/agentic/config/ued_setup.yaml`. The simulator backend isn't offered here: rehearsals run on S3DF (`sim/stages/mcp_mockup.py`), not on the DAQ machine.
+
+## Skills
+
+`skills/` holds the UED skills; the build copies them into `build/.claude/skills/`:
+
+- `ued-bringup`: the campaign, stage by stage, with the rules the tools keep and when to stop for an operator.
+- `ued-positions`: taught positions, camera views and safety ranges in the setup file.
+- `ued-beam-optimization`: the Badger/Xopt plan for the optimization after the collimator.
 
 Accelerator PVs (gun RF, magnets, correctors) answer from `ued-daq` with the address list `/cds/group/pcds/setup/ued_setup.sh` sets, `172.21.36.255:5064 172.27.99.255:5058` (since 2026-10-16). The profile gives the agent both entries for reads. The `.env` on S3DF carries the same `EPICS_CA_ADDR_LIST` line, so change it there too, then rebuild and restart the agent.

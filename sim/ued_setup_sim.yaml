@@ -1,0 +1,79 @@
+# Setup for the virtual UED (sim/virtual_ued.py), in the same shape as
+# bringup/ued_setup.yaml. The mock-up copies it into its run folder and points
+# UED_SETUP_FILE there, so save_position edits the copy, not this file.
+#
+# Positions are what the virtual machine was "taught" (the run-4 numbers);
+# the virtual flake's best spot is a little off them on purpose.
+
+positions:
+  yag: {x: 22.45, y: 41.0, z: 0.0, pitch: 0.0, yaw: 0.0}
+  andor: {x: 9.0, y: 41.0, z: 0.0, pitch: 0.0, yaw: 0.0}
+  bi: {x: 14.0, y: 45.1, z: 0.0, pitch: 0.0, yaw: 0.0}
+  si: {x: 13.9, y: 39.75, z: 0.0, pitch: 0.0, yaw: 0.0}
+
+camera_views:
+  full_view: {exposure: 0.1, gain: 0, light: 1}
+  ebeam: {exposure: 1.0, gain: 10, light: 0}
+  laser: {exposure: 0.5, gain: 5, light: 0}
+
+andor:
+  check: {exposure: 1.0, gain: 2}
+  diffraction: {exposure: 2.0, gain: 1000}
+  through_hole_px: [560.0, 470.0]
+  through_hole_radius_px: 30.0
+
+pump:
+  hwp_min_energy_deg: 6.0
+  hwp_pump_probe_deg: 36.0
+  power_meter_out_mm: 0.0
+  power_meter_in_mm: 40.0
+
+collimator:
+  out_mm: 0.0
+  nominal_mm: 90.0
+  scan_half_width_mm: 0.5
+
+gun:
+  uv_throttle_scan_deg: 51
+  uv_throttle_operating_deg: 53
+  phase_from_emission_deg: 30
+  target_charge_fC: 10
+
+scope:
+  channel: 2
+  mV_per_fC: -0.17
+
+cross:
+  on_cross_px: 5
+  max_move_px: 150
+
+limits:
+  sample_x: [0.0, 30.0]
+  sample_y: [30.0, 50.0]
+  sample_z: [-1.0, 5.0]
+  sample_pitch: [-5.0, 5.0]
+  sample_yaw: [-5.0, 5.0]
+  collimator: [0.0, 96.0]
+  delay: [0.0, 300.0]
+  pump_hwp: [0.0, 180.0]
+  pump_nd_wheel: [40.0, 370.0]
+  pump_power_meter: [0.0, 40.1]
+  pump_lens_h: [-5.0, 5.0]
+  pump_lens_v: [-5.0, 5.0]
+  gun_uv_throttle: [40.0, 66.0]
+  areq: [0.0, 0.53]
+  preq: [-180.0, 180.0]
+  sol1: [0.0, 1.0]
+  sol2: [0.0, 15.0]
+  xc00: [-3.0, 3.0]
+  yc00: [-3.0, 3.0]
+  xc01: [-3.0, 3.0]
+  yc01: [-3.0, 3.0]
+  xc02: [-3.0, 3.0]
+  yc02: [-3.0, 3.0]
+  xc03: [-3.0, 3.0]
+  yc03: [-3.0, 3.0]
+  xc04: [-3.0, 3.0]
+  yc04: [-3.0, 3.0]
+  cam_sample_yag.cross_x: [0, 2048]
+  cam_sample_yag.cross_y: [0, 2048]

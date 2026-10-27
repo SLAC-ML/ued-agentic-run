@@ -4,9 +4,11 @@ This folder starts from Fuhao Ji's `ued_run4` scripts (GUED run 4, Nov–Dec 202
 
 - `ued_pvs.py`: the PV map. Each run-4 PV is paired with its current PV, with a status: CONFIRMED, LIKELY, CANDIDATE, UNMAPPED or NO_ACCESS. Since 2026-10-16 it follows Fuhao's run-7 list where that has the device, and no PV is NO_ACCESS any more.
 - `snapshot.py`: a read-only beamline snapshot built on that map. It replaces `PVtest_run4.py`; `--json` gives machine-readable output.
-- `gun_ramp.py`: the gun RF ramp-up procedure, ported from `ramp_rf.py`. It has two extra checks: the feedbacks must stay Active, and the amplitude readback must track the setpoint. It drives a backend, which for now is only the simulator in [`sim/virtual_gun.py`](../sim/README.md). There is no machine backend.
-- `ued_tuning/`: an MCP server with one tool per bring-up stage, all eight from the Run 7 proposal (gun ramp-up through time zero). `UED_TUNING_BACKEND` picks the machine behind it. `sim` is the virtual UED in [`sim/virtual_ued.py`](../sim/README.md). `epics` is the real machine, read-only: it reads through the channel map in `channels.py` and refuses every write, so a stage stops at its first write. It computes camera stats (centroid, size, total) from the image itself, because most of the cameras' Stats plugins are switched off. The deployed agent runs it with the `epics` backend (since 2026-10-16); see [agent/deploy/ued/README.md](../agent/deploy/ued/README.md). [reports/ued-bringup-mockup.html](../reports/ued-bringup-mockup.html) has the mock-up run and what blocks each stage on the real machine.
-- `mcp_readonly_check.py`: runs the `ued_tuning` server against the real machine with the `epics` backend. It reads every channel and calls every stage tool, and each tool stops at its first write. Results go to `runs/epics/` on S3DF.
+- `gun_ramp.py`: the gun RF ramp-up procedure, ported from `ramp_rf.py`. It has two extra checks: the feedbacks must stay Active, and the amplitude readback must track the setpoint. On the real machine AACT is in kV and AREQ is dimensionless, so the check holds their ratio steady after calibrating it over the first steps. It drives a backend: the simulator in [`sim/virtual_gun.py`](../sim/README.md), or the read-only EPICS backend, which refuses the first write.
+- `ued_automation.py`: the updated version of the run-4 automation scripts (`goToYAG`, `goToBi`, `saveYAG`, ...), reworked per Fuhao's 2026-10 notes. It names no PV: it drives a backend through the logical channels. It reads one editable setup file, closes the pump shutter before any move, and checks every write against the safety ranges. The `ued_tuning` stages move the stage through it.
+- `ued_setup.yaml`: the seed of that setup file: taught positions, the three camera views, Andor settings, pump and collimator setpoints, and safety ranges. The tools read the live copy, `/sdf/group/mli/zhezhang/ued/agentic/config/ued_setup.yaml` (or `$UED_SETUP_FILE`). `save_position` writes one position line there, keeps a `.bak`, and logs the change. Positions and the laser setpoints are still `null`, to be taught. The safety ranges were seeded on 2026-10-21 from the motors' soft limits and the magnets' drive limits.
+- `ued_tuning/`: an MCP server with one tool per bring-up stage, all eight from the Run 7 proposal (gun ramp-up through time zero). It also has the automation actions (`go_to_position`, `save_position`, `set_camera_view`, `close_pump_shutter`), read-only checks (`check_beam_prerequisites`, `scope_charge`, `monitor_charge`, `measure_andor_spot`, `list_positions`) and `plan_beam_optimization`, an Xopt/Badger VOCS. The stage procedures follow the operators' 2026-10 notes: the dry-run notes for stages 1–3 and Fuhao's procedures for 4–8 (see `stages.py`). Beam stages stop unless all four gate valves read OPEN. `UED_TUNING_BACKEND` picks the machine behind it. `sim` is the virtual UED in [`sim/virtual_ued.py`](../sim/README.md). `epics` is the real machine, read-only: it reads through the channel map in `channels.py` and refuses every write, so a stage stops at its first write. It computes camera stats (centroid, size, total) from the image itself, because most of the cameras' Stats plugins are switched off. The deployed agent runs it with the `epics` backend (since 2026-10-16); see [agent/deploy/ued/README.md](../agent/deploy/ued/README.md). [reports/ued-bringup-mockup.html](../reports/ued-bringup-mockup.html) has the mock-up and the real-machine check (refreshed 2026-10-21; rebuild with `reports/src/ued-bringup-mockup/build.py`). [reports/ued-bringup-steps.html](../reports/ued-bringup-steps.html) lists every step of every stage for an expert to review.
+- `mcp_readonly_check.py`: runs the `ued_tuning` server against the real machine with the `epics` backend. It reads every channel, runs the read-only checks, and calls every stage tool, and each tool stops at or before its first write. Results go to `runs/epics/` on S3DF.
 
 Run it on `ued-daq`. S3DF is mounted there, so nothing has to be copied over:
 
@@ -80,23 +82,22 @@ All positions are in old controller units. Positions need re-teaching on the new
 
 ## Open questions
 
-Fuhao's layout sketch and the gun ramp script (`assets/layout/`, `assets/gun_ramp_up/`) answered part of the original list, and his run-7 PV list answered more.
+Fuhao's layout sketch and the gun ramp script (`assets/layout/`, `assets/gun_ramp_up/`) answered part of the original list. His run-7 PV list and the 2026-10 procedure notes answered more.
 
-1. **Accelerator PVs (`AS01`):** answered for reads. They answer from `ued-daq` now. Still open: the write route, for when stages may write (`uedopr` / `testfac-srv01`, or approved writes from `ued-daq`).
-2. **Pump energy control:** mostly answered. The run-7 list sets the pump with the Harmonics HWP `MMN:05:02` (DESC "max @ 51", the list says 50) and the ND wheel `MMN:05:08` (max @ 310). It calls `MMN:08:01` the THz throttle, though its DESC says "Pump Throttle (max @ 44.5)". To confirm: is 08:01 unused for SUED pump-probe?
-3. **Sample stage:** partly answered. The run-7 list puts the SUED sample stage on XPS-11: `11:03/04/05` (X/Y/Z), `11:01` (pitch) and `11:08` (yaw). Their DESCs say "Incoupling X", "Incoupling Y", "Outcoupling in@24.9", "Capillary Y" and "Catcher Y". Are those left over from a jet setup? The list's "2nd SUED sample stage" block gives `03:04` as Z, but `03:04` is also its pump long delay (DESC "Pump Long Delay"). Is that block stale? On XPS-04, `04:04` is "1st Pitch", not Sample X as the 10-01 survey guessed.
-4. **Sample-plane camera:** answered. `UED:GIGE:03` is the sample chamber camera. Its e-beam marker is the cross overlay `Cross2X/Y` (1080, 1034).
-5. **Shutter voltage levels:** still open. What voltages do the Beckhoff shutter outputs use for open and closed? All read 0 V.
-6. **Phosphor, chamber light, Faraday cup:** partly answered.
-   - Chamber light: `ACSW:AS01:NW03:2POWERON` / `:2POWEROFF`, with the state in `:2POWERSTATE`.
-   - Far-detector phosphor: still open. The old `ASTA:BO:2114-9:BIT2` is commented out in the run-7 list and doesn't answer.
-   - Faraday cup and its holder with the Diag YAG: still no PV for the charge or the inserter.
-7. **Gun ramp details:** partly open.
-   - The feedback enums read "Disable" with the gun off. `ramp_rf.py` waits for "Active".
-   - `AREQ`'s EGU says "degrees" and `AACT_AVGNT`'s says kV. The AREQ → MV/m calibration is still needed.
-   - Still needed: archived ramps for the virtual gun, and the modulator mode/HV PVs.
-8. **Correctors:** partly answered. `X/YCOR:AS01:121…382` exist and read. What's open:
-   - Their `BCTRL` EGU says kG-m, but `BCTRL` reads −145.6 (limits ±521) where `BDES` reads 0. Which one sets the kick, and what's the kick per unit?
-   - XC/YC05 is in neither list.
-   - On 10-16 the magnets were "Turned Off", and solenoid 2 read "PS Tripped".
-9. **Pump power meter (new):** `MMN:05:06` read 40 (in, blocking the pump) on 10-16. Stages 6 and 8 take it out first; that's one more write to approve.
+1. **Write route:** still open. The tools are read-only on the real machine. Should stage writes go through Badger routines an operator approves, or the MCP tools with approval and the safety ranges? And for the accelerator side, from `ued-daq` or through `uedopr` on `testfac-srv01`?
+2. **Taught positions and setpoints:** to fill in `ued_setup.yaml`. They are `null` there until then:
+   - the sample-stage positions `yag`, `andor`, `bi`, `si`;
+   - the pump HWP angles for minimum energy and for ~2 uJ (from the laser team);
+   - the Andor through hole's pixel position and radius.
+3. **Safety ranges:** confirm the seeded ones, especially the placeholders for the pump HWP (`0–180`) and the UV throttle (`45–60`). Their IOC limits are ±1e6 and ±180.
+4. **Sample stage:** partly answered. The run-7 list puts the SUED sample stage on XPS-11: `11:03/04/05` (X/Y/Z), `11:01` (pitch) and `11:08` (yaw). Their DESCs say "Incoupling X", "Incoupling Y", "Outcoupling in@24.9", "Capillary Y" and "Catcher Y". Are those left over from a jet setup? The list's "2nd SUED sample stage" block gives `03:04` as Z, but `03:04` is also its pump long delay. Is that block stale?
+5. **Pump steering:** Fuhao's procedure says "pump laser mirror H and V". The tools map that to the run-7 list's pump lens H/V (`MMN:08:05/06`). Or is it the SmarAct `UED:MCS:01:m7/m8` ("pump_beam_X/Y")?
+6. **Emission phase (stage 2):** the tools take the onset, where the scope charge first rises 5σ above the trace noise. Is it the onset, the half-maximum or the peak, and is the 30° offset added in the direction PREQ grows?
+7. **Scope:** `MBBO_CH2_SCL` (V/div) reads UDF, so the charge numbers trust a record that was never processed. Is there a readback, and is −1.7 mV = 10 fC for a particular termination? The procedure text says `WF_CH0_TRACE`; CH2 is the confirmed one.
+8. **Cameron's UV feedback loop (stage 3):** where does it live, and is it PV-backed? Its "continuously tune the UV throttle to keep ..." is cut off. The tool fine-tunes only with the operator's confirmation that the loop is stopped, then hands over.
+9. **Diagnostic screen and Faraday cup:** still no PV for the inserter, so inserting and extracting it is an operator step (`diag_screen_by_operator=true`). Does the scope read the Faraday cup on that holder? The simulator assumes the pulse shows only while the holder is in.
+10. **E-beam view gain:** procedure (4) says gain 30, the state list says 10. The setup file uses 10.
+11. **Shutter voltage levels:** still open. What voltages do the Beckhoff shutter outputs use for open and closed? All read 0 V.
+12. **Gun ramp:** the AREQ → MV/m calibration; archived ramps for the virtual gun; the modulator mode and HV PVs, so the preconditions can be read instead of asked. KY01's AREQ sat at 0.2, so a ramp starts by lowering it to 0.05.
+13. **Correctors:** which PV sets the kick, `BCTRL` (reads −145.6, EGU "kG-m", limits ±521) or `BDES` (reads 0)? What is the kick per unit? XC/YC04 are in A. XC/YC05 is in neither list.
+14. **Far-detector phosphor:** the old `ASTA:BO:2114-9:BIT2` is commented out in the run-7 list and doesn't answer. Is it still needed?

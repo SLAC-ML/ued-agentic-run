@@ -9,6 +9,8 @@
 #   sol1Fac sol2Fac                   solenoid scale factors
 #   x0 y0                             cathode spot offset [m]
 #   coll                              collimator in (1) or retracted (0)
+#   collR collx                       collimator hole radius and its x
+#                                     offset from the axis [m]
 #   xc00 yc00 ... xc05 yc05           corrector kicks [mrad at 3.098 MeV]
 #   gq1 gq2                           quad doublet gradients [T/m]
 #   dz zstop                          extra screens every dz up to zstop
@@ -19,6 +21,9 @@
 # (inches). Correctors and quads are rough, from the kicker sketch.
 
 accuracy(6);
+# Cap the time step at 20 ps (6 mm at c). In the long drifts the adaptive
+# step otherwise grows past the 5 cm correctors and steps over XC/YC04.
+dtmaxt(0, 1e-6, 2e-11);
 
 ############## Initial beam (unchanged from UED_beamline.in) ##########
 sigmaT = 60e-15/2.35;            # 60 fs FWHM laser pulse
@@ -51,10 +56,12 @@ map1D_B("wcs", "z", 0.0, "gunSolenoid_v0_bucking.gdf", "z", "Bz", sol1B);
 sol2B = sol2Fac/12*0.385;        # micro-focusing solenoid
 map1D_B("wcs", "z", 1.005, "nano_ued_solenoid.gdf", "z", "Bz", sol2B);
 
-################ Collimator (100 um hole) ###########################
-# coll=0 retracts it (the beam goes through untouched).
+################ Collimator ########################################
+# coll=0 retracts it (the beam goes through untouched). collR is the hole
+# radius (47 um: the May 2025 deck's 100 um hole); collx moves the hole off
+# the axis in x, as the collimator motor does.
 if (coll != 0) forwardscatter("wcs", "I", "remove", 0);
-if (coll != 0) scatteriris("wcs", "z", 0.5575, 47e-6, 1) scatter="remove";
+if (coll != 0) scatteriris("wcs", collx, 0, 0.5575, 1, 0, 0, 0, 1, 0, collR, 1) scatter="remove";
 
 ################ Steering correctors ################################
 # Bmultipole dipole component, 5 cm long. The kick is an angle at the

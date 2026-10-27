@@ -1,0 +1,152 @@
+<div class="wrap">
+  <div class="topbar">
+    <span class="eyebrow">UED bring-up · tooling mock-up · updated 2026-10-21</span>
+    <button class="theme-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme">
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <span id="theme-label">Light</span>
+    </button>
+  </div>
+
+  <header class="hero">
+    <span class="eyebrow">Run 7 proposal, Workflow 1 + 2 · ued_tuning MCP server · virtual UED (GPT + analytic models)</span>
+    <h1>All eight bring-up stages ran through MCP against the simulator</h1>
+    <p class="lede">Each stage from the Run 7 proposal is a tool on one MCP server, <code>ued_tuning</code>, now following the operators' procedures: the dry-run notes for stages 1–3 and Fuhao's procedures for 4–8. Called over stdio, the way the agent calls it, every stage ran against a virtual UED and passed its acceptance check, landing close to the hidden truth. On the real machine the same server reads 92 of 97 channels; today every beam stage stops before writing, because the gate valves are closed.</p>
+    <div class="safety update" role="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+      <div><p><strong>What changed since 2026-10-16.</strong></p>
+      <ul>
+        <li>The gun RF is back on the TS1 klystron, <code>KY01</code>.</li>
+        <li>Stage 2 checks the diagnostic screen with the gun UV toggled, then scans the phase on the oscilloscope (CH2) for the emission phase: PREQ = emission + 30°.</li>
+        <li>Stage 3 fine-tunes to 10 fC (−1.7 mV) and hands over to Cameron's UV feedback loop.</li>
+        <li>Stages 4–8 follow Fuhao's steps:
+          <ul>
+            <li>the e-beam goes onto the YAG cross;</li>
+            <li>the collimator motor is tuned at 90 mm (200 µm hole);</li>
+            <li>a Badger plan covers the optimization;</li>
+            <li>the main beam goes through the Andor's through hole;</li>
+            <li>the overlap is checked before time zero.</li>
+          </ul></li>
+        <li>Every beam stage needs all four gate valves OPEN. The pump shutter is closed first. Every write is checked against safety ranges from one editable setup file, which also holds the taught positions and the camera views.</li>
+        <li>A bug in the GPT deck is fixed: its time step skipped the XC/YC04 correctors.</li>
+      </ul></div>
+    </div>
+    <div class="safety" role="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.3 8.3-8 9-4.7-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+      <p><strong>Nothing touched the beamline.</strong> The campaign ran on S3DF against the simulator. On <code>ued-daq</code> everything was <code>caget</code> only: the server ran with its read-only EPICS backend, whose tools all stopped at or before their first write. The backend refuses every write before any EPICS call and never imports <code>caput</code>.</p>
+    </div>
+    <ul class="findings">
+      <li><span class="chip">mock-up</span><span id="f-mock">8 of 8 stages accepted in one MCP session.</span></li>
+      <li><span class="chip">real machine</span><span>92 of 97 channels read. The 5 that don't have no PV: the diagnostic-screen inserter, XC/YC05, and the two signals that need a detector-image analysis. Today all four gate valves are shut or inconsistent, so beam stages stop before writing.</span></li>
+      <li><span class="chip">blocking</span><span>The write route comes first. Then the setup values only operators can give: the taught positions, the pump HWP setpoints and the Andor through hole.</span></li>
+    </ul>
+  </header>
+
+  <section class="section" aria-labelledby="tbl-h">
+    <div class="section-head">
+      <h2 id="tbl-h">Stage by stage</h2>
+      <p class="muted">"Mock-up" is the run through MCP against the virtual machine, measured against its hidden truth. "Real machine" is how the stage fared on <code>ued-daq</code> on 2026-10-21, read-only. Open a row's channel list to see every channel it writes, with the PV behind it.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="stages">
+        <thead><tr><th>Stage</th><th>Simulator behind it</th><th>Mock-up</th><th>Real machine</th><th>Still needed</th></tr></thead>
+        <tbody id="stage-rows"></tbody>
+      </table>
+    </div>
+    <div class="key-row" aria-hidden="true">
+      <span><i class="dot ok"></i>reads on <code>ued-daq</code> (confirmed or likely PV)</span>
+      <span><i class="dot warn"></i>candidate PV, needs confirming</span>
+      <span><i class="dot bad"></i>no PV known (an operator step, or a detector-image analysis)</span>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="arch-h">
+    <div class="section-head">
+      <h2 id="arch-h">How the mock-up works</h2>
+      <p class="muted">One server, two backends, one setup file. The stage code doesn't know which machine is behind it.</p>
+    </div>
+    <div class="flow" aria-label="Agent calls the ued_tuning MCP server, which drives either the virtual UED or the read-only EPICS backend through the automation module and the setup file">
+      <div class="node"><b>Agent</b><span>Osprey / Claude Code with the UED skills, or the mock-up driver</span></div>
+      <div class="arrow" aria-hidden="true">MCP stdio</div>
+      <div class="node"><b>ued_tuning</b><span>a tool per stage, automation tools (positions, camera views, pump shutter), read-only checks; positions and safety ranges from <code>ued_setup.yaml</code></span></div>
+      <div class="arrow" aria-hidden="true">get / put</div>
+      <div class="split">
+        <div class="node sim"><b>sim</b><span><code>virtual_ued.py</code>: GPT for beam transport (collimator hole, correctors), analytic models for photoemission, scope, laser, Andor through hole and rings, sample, pump-probe; hidden truth</span></div>
+        <div class="node epics"><b>epics</b><span><code>caget</code> through the PV map, camera stats from the images; every put refused (read-only)</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="ev-h">
+    <div class="section-head">
+      <h2 id="ev-h">What the tools did</h2>
+      <p class="muted">Four of the stages, from the tool responses as the MCP client received them. Hover for values.</p>
+    </div>
+    <div class="charts-2">
+      <div class="card"><h4>Stage 2 · Emission-phase scan</h4><span class="sub">Scope charge vs gun phase at UV throttle 51; dashed: the detection threshold (5σ), the emission phase found, and PREQ set 30° later</span><div class="legend" id="sch-legend" aria-hidden="true"></div><div class="chart" id="ch-schottky"></div></div>
+      <div class="card"><h4>Stage 5 · Collimator motor</h4><span class="sub">Andor counts vs collimator position around 90 mm (the 200 µm hole); dashed: where the hole sits on the beam, in truth</span><div class="legend" id="col-legend" aria-hidden="true"></div><div class="chart" id="ch-coll"></div></div>
+      <div class="card"><h4>Stage 8 · Time zero</h4><span class="sub">Bragg-peak signal vs delay: the last zoomed scan, with its fit. The tool zooms ±3 mm → ±0.3 → ±0.03 and stops once t₀ is known to 5 µm.</span><div class="legend" id="t0-legend" aria-hidden="true"></div><div class="chart" id="ch-t0"></div></div>
+      <div class="card"><h4>Stages 3, 6, 7 · Converging</h4><span class="sub">distance to target ÷ tolerance at each measurement, log scale: charge (±1 fC), laser on the cross (3 px), main beam into the Andor through hole (its 30 px radius)</span><div class="legend" id="conv-legend" aria-hidden="true"></div><div class="chart" id="ch-conv"></div></div>
+    </div>
+    <p class="note-line" id="note-coll">The collimator insertion shows what Fuhao described: blocked as the plate comes in, then the beam reappears, cut, near the hole. The motor puts the hole on the beam, which sits off-axis in the simulator (a hidden cathode-spot offset), so the best position is not 90.00 mm.</p>
+  </section>
+
+  <section class="section" aria-labelledby="ep-h">
+    <div class="section-head">
+      <h2 id="ep-h">The same server on the real machine (read-only)</h2>
+      <p class="muted">Run on <code>ued-daq</code> on 2026-10-21 with <code>UED_TUNING_BACKEND=epics</code> and the live setup file. <span id="epics-count">92 of 97</span> channels answered. The ones that didn't have no PV.</p>
+    </div>
+    <div class="table-wrap"><table class="w-760" id="epics-groups"></table></div>
+    <div class="table-wrap"><table class="w-640" id="epics-stages"></table></div>
+    <details class="ep-more"><summary>Every channel, with its PV and the value it read</summary><div class="table-wrap"><table class="w-760" id="epics-all"></table></div></details>
+    <p class="note-line">The gun was parked (KY01 AREQ 0.2, no output) and the gate valves were shut, so these reads confirm access, not calibration. The scope's dark baseline (+3.36 div) and noise (0.237 div) match the dry-run measurement; with no beam, its largest dip is a 3σ noise excursion and reads as not detected.</p>
+  </section>
+
+  <section class="section" aria-labelledby="x-h">
+    <div class="section-head"><h2 id="x-h">What still stands between the tools and a real run</h2></div>
+    <div class="explain" id="cross"></div>
+  </section>
+
+  <section class="section" aria-labelledby="q-h">
+    <div class="section-head"><h2 id="q-h">Questions for Fuhao</h2><p class="muted">None blocks the next step; each one turns a guess in the tools into a fact. The steps report has them in place, stage by stage.</p></div>
+    <ol class="needs">
+      <li><strong>Write route.</strong> Badger routines an operator approves, or the MCP tools with approval and the safety ranges? For the gun RF and magnets, from <code>ued-daq</code> or through <code>uedopr</code> on <code>testfac-srv01</code>?</li>
+      <li><strong>Setup values.</strong> The taught positions (<code>yag</code>, <code>andor</code>, <code>bi</code>, <code>si</code>), the pump HWP angles for minimum energy and ~2 µJ, and the Andor through hole's pixel position and radius. The safety ranges for the pump HWP and the UV throttle are placeholders.</li>
+      <li><strong>Scope channel.</strong> The procedure text says <code>WF_CH0_TRACE</code>, the V/div PV given is CH2's, and the dry run confirmed CH2. Which is it? Its V/div record reads UDF: is there a readback?</li>
+      <li><strong>Emission phase.</strong> The tools take the onset, where the charge first rises 5σ above the scope noise. Onset, half-maximum or peak? Is the 30° added in the direction PREQ grows?</li>
+      <li><strong>Cameron's UV feedback loop.</strong> Where is it, is it PV-backed, and what does "keep ___" end with?</li>
+      <li><strong>Pump steering.</strong> "Pump laser mirror H and V": the run-7 list's pump lens <code>MMN:08:05/06</code>, or the SmarAct <code>UED:MCS:01:m7/m8</code>?</li>
+      <li><strong>E-beam view gain.</strong> Procedure (4) says gain 30, the state list says 10. The tools use 10.</li>
+      <li><strong>Correctors.</strong> Which PV sets the kick, <code>BCTRL</code> or <code>BDES</code>, and what is the kick per unit?</li>
+    </ol>
+  </section>
+
+  <section class="section" aria-labelledby="f-h">
+    <div class="section-head"><h2 id="f-h">Files and rerunning</h2></div>
+    <ul class="files">
+      <li><code>bringup/ued_tuning/</code>: <code>channels.py</code> (the logical channels and their PVs), <code>stages.py</code> (the eight procedures), <code>server.py</code> (the MCP server), <code>epics_backend.py</code> (read-only; camera stats from the images). The deployed agent runs it with the EPICS backend forced.</li>
+      <li><code>bringup/ued_automation.py</code>: the updated run-4 automation (positions, camera views, pump shutter, safety ranges). <code>bringup/ued_setup.yaml</code>: the seed of the setup file; the live copy is <code>/sdf/group/mli/zhezhang/ued/agentic/config/ued_setup.yaml</code>.</li>
+      <li><code>sim/virtual_ued.py</code>, <code>sim/ued_setup_sim.yaml</code>, <code>sim/stages/mcp_mockup.py</code>: the virtual machine, its setup, and the campaign driver. <code>bringup/mcp_readonly_check.py</code>: the real-machine check.</li>
+      <li><code>agent/skills/</code>: the UED skills in the deployed agent (<code>ued-bringup</code>, <code>ued-positions</code>, <code>ued-beam-optimization</code>).</li>
+      <li>Results on S3DF under <code>/sdf/group/mli/zhezhang/ued/agentic/</code>:
+        <ul>
+          <li><code>runs/sim/mcp_mockup_20261021/</code>: results, records, and the setup copy it taught;</li>
+          <li><code>runs/epics/readonly_check_20261021.json</code>.</li>
+        </ul></li>
+      <li>This page: <code>reports/src/ued-bringup-mockup/</code> holds its parts and <code>build.py</code>.</li>
+    </ul>
+    <pre>ssh iana
+source /sdf/group/mli/zhezhang/ued/agentic/scripts/env.sh
+cd /sdf/group/mli/zhezhang/ued/agentic/sim/stages
+/sdf/group/mli/zhezhang/OspreyDeployments/UED/build/.venv/bin/python mcp_mockup.py   # ~7 min
+
+ssh ued-daq   # read-only check; bash -i picks up the CA list from ~/.bashrc
+cd /sdf/group/mli/zhezhang/ued/agentic/bringup
+bash -ic "/sdf/group/mli/zhezhang/OspreyDeployments/UED/build/.venv/bin/python mcp_readonly_check.py"</pre>
+  </section>
+
+  <footer>
+    <span>Simulator fidelity: GPT in fast mode (3000 particles, no space charge). The photoemission, scope, laser, Andor, sample and pump-probe models are placeholders with little noise, so the mock-up checks inputs, outputs and logic. It doesn't check the numbers a real run would give.</span>
+    <span>Mock-up run 2026-10-21 on S3DF iana; read-only check on ued-daq the same day. Earlier versions 2026-10-09 and 2026-10-16.</span>
+  </footer>
+</div>

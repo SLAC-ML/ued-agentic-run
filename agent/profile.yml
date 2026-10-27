@@ -175,13 +175,19 @@ mcp_servers:
       UED_BRINGUP_DIR: "${UED_BRINGUP_DIR:-/sdf/group/mli/zhezhang/ued/agentic/bringup}"
       EPICS_CA_ADDR_LIST: "${EPICS_CA_ADDR_LIST:-172.21.36.255:5064 172.27.99.255:5058}"
       EPICS_CA_AUTO_ADDR_LIST: "${EPICS_CA_AUTO_ADDR_LIST:-NO}"
-    # Reads run unprompted. Each stage tool asks first: none can write, but
-    # an operator should see a stage being tried on the real machine.
+    # Read-only tools run unprompted. Every tool that writes (the stages and
+    # the automation actions) asks first: none can write on this backend,
+    # but an operator should see each one being tried on the real machine.
     permissions:
-      allow: [ued_tuning_info, machine_channels, machine_read]
+      allow: [ued_tuning_info, machine_channels, machine_read,
+              check_beam_prerequisites, scope_charge, monitor_charge,
+              measure_andor_spot, plan_beam_optimization, list_positions]
       ask: [gun_ramp, schottky_scan, set_bunch_charge, beam_on_screens,
             align_collimator, overlap_pump_laser, tune_sample_position,
-            find_time_zero]
+            find_time_zero, check_overlap, go_to_position, save_position,
+            set_camera_view, close_pump_shutter]
+  # Skills for this server live in skills/ beside this file: ued-bringup (the
+  # campaign), ued-positions (setup file), ued-beam-optimization (Badger).
   # Delete a block and its mcp_servers/<package>/ together: one without
   # the other costs every session a 20 s wait for a server that cannot start.
   # Editing either is a source change, not a build tweak: rebuild afterwards,

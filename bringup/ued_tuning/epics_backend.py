@@ -16,9 +16,7 @@ ued_setup.sh sets on ued-daq: 172.21.36.255:5064 172.27.99.255:5058.
 """
 from __future__ import annotations
 
-import json
 import math
-import os
 import time
 
 import numpy as np
@@ -98,14 +96,15 @@ class EpicsBackend:
             raise ChannelUnavailable(f'{pv} did not answer')
         return value
 
-    def _camera_stats(self, cam):
-        """Stats of the camera's latest frame, computed once per frame."""
+    def _frame(self, cam):
+        """(counter, image, full scale) of the camera's latest frame, read
+        once per frame."""
         prefix, plugin, _, _ = CAMERAS[cam]
         p = f'{prefix}:{plugin}'
         counter = self._read(f'{p}:ArrayCounter_RBV')
         cached = self._frames.get(cam)
         if cached and cached[0] == counter:
-            return cached[1]
+            return cached
         dims = [int(self._read(f'{p}:ArraySize{i}_RBV')) for i in range(3)]
         ndim = int(self._read(f'{p}:NDimensions_RBV'))
         dtype = str(self._read(f'{p}:DataType_RBV', as_string=True))
@@ -118,9 +117,20 @@ class EpicsBackend:
             img = data[:n].reshape(dims[2], dims[1], 3).mean(axis=2)
         else:                                     # mono: x, y
             img = data[:dims[0] * dims[1]].reshape(dims[1], dims[0])
-        stats = image_stats(img, full_scale=(1 << bits) - 1)
-        self._frames[cam] = (counter, stats)
+        frame = (counter, img, (1 << bits) - 1, None)
+        self._frames[cam] = frame
+        return frame
+
+    def _camera_stats(self, cam):
+        counter, img, full, stats = self._frame(cam)
+        if stats is None:
+            stats = image_stats(img, full_scale=full)
+            self._frames[cam] = (counter, img, full, stats)
         return stats
+
+    def image(self, cam):
+        """The camera's latest frame, as a 2D array (RGB averaged)."""
+        return self._frame(cam)[1]
 
     def get(self, name):
         ch = CHANNELS.get(name)
@@ -145,12 +155,3 @@ class EpicsBackend:
 
     def time(self):
         return time.time()
-
-    def saved_positions(self):
-        """Taught sample-stage positions, from UED_POSITIONS_FILE (JSON)."""
-        path = os.environ.get('UED_POSITIONS_FILE')
-        if not path or not os.path.exists(path):
-            raise ChannelUnavailable('sample-stage positions not taught yet '
-                                     '(set UED_POSITIONS_FILE)')
-        with open(path) as f:
-            return {k: tuple(v) for k, v in json.load(f).items()}

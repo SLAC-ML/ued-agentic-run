@@ -133,6 +133,24 @@ CHANNELS = [
            'old "inserted" = 93 mm on the old controller'),
     _value('faraday_cup', 'beamline', 'Faraday cup, before collimator', None,
            None, '', UNMAPPED, 'shares a holder with the Diag YAG (sketch)'),
+    *[_value(f'gate_valve_{u}', 'vacuum', f'Gate valve {u}',
+             f'VVPG:AS01:{u}:POSITION', None, '', CONFIRMED,
+             'OPEN, CLOSED, MOVING or INCONSISTENT; all four OPEN to see the '
+             'e-beam (Fuhao, 2026-10)')
+      for u in (240, 272, 280, 295)],
+    _value('scope_ch2_trace', 'diagnostics', 'Scope CH2 trace (bunch charge)',
+           'SCOP:AS01:SC01:WF_CH2_TRACE', None, 'div', CONFIRMED,
+           '500 samples; negative-going pulse, -1.7 mV = 10 fC; confirmed in '
+           'the 2026-10-16 dry run'),
+    _value('scope_ch2_vdiv', 'diagnostics', 'Scope CH2 volts/div',
+           'SCOP:AS01:SC01:MBBO_CH2_SCL', None, '', CONFIRMED,
+           'an output record that reads UDF; check the front panel'),
+    _value('scope_ch0_trace', 'diagnostics', 'Scope CH0 trace',
+           'SCOP:AS01:SC01:WF_CH0_TRACE', None, 'div', CONFIRMED,
+           "the trace Fuhao's stage-2 text names; reads ~-2.4 div at 1 V/div"),
+    _value('scope_ch0_vdiv', 'diagnostics', 'Scope CH0 volts/div',
+           'SCOP:AS01:SC01:MBBO_CH0_SCL', None, '', CONFIRMED,
+           'an output record that reads UDF'),
     _value('far_phosphor', 'beamline', 'Far-detector phosphor in/out', None,
            'ASTA:BO:2114-9:BIT2', '', UNMAPPED,
            'the old PV is commented out in the run-7 list and does not '
@@ -145,8 +163,9 @@ CHANNELS = [
     # Cameras (old areaDetector prefixes had a :cam1 segment, new ones don't)
     _camera('cam_vcc', 'VCC (virtual cathode)', 'UED:GIGE:06', 'ASPS05',
             CONFIRMED),
-    _camera('cam_diag_yag', 'Diag YAG, before collimator', 'UED:GIGE:09',
-            None, LIKELY, 'IOC alias "DIAG YAG"; sketch puts the Diag YAG '
+    _camera('cam_diag_yag', 'Diagnostic screen, before collimator',
+            'UED:GIGE:09', None, CONFIRMED, "Fuhao's run-7 list (image, "
+            'size, ROI1); IOC alias "DIAG YAG"; the screen shares a holder '
             'with the Faraday cup upstream of the collimator'),
     _camera('cam_sample_yag', 'Sample chamber camera', 'UED:GIGE:03',
             'ASPS04', CONFIRMED, 'run-7 list; RGB 2048x2048, e-beam cross '
@@ -157,27 +176,29 @@ CHANNELS = [
             'ANDOR1', CONFIRMED, 'run-7 list; image on IMAGE2, Stats1 on '
             'ROI1'),
 
-    # Gun RF (klystron KY03 since run 4's KY01; names from ramp_rf.py)
+    # Gun RF: klystron KY01 (TS1), as in run 4, again since 2026-10 after a
+    # spell on TS8 (KY03). Names from ramp_rf.py.
     _value('gun_amp_req', 'gun_rf', 'Gun amplitude setpoint AREQ',
-           'SIOC:AS01:KY03:0:AREQ', 'SIOC:AS01:KY01:0:AREQ', '', CONFIRMED,
-           'operating 0.53; ramp starts at 0.05 (ramp_rf.py)'),
+           'SIOC:AS01:KY01:0:AREQ', 'SIOC:AS01:KY01:0:AREQ', '', CONFIRMED,
+           'operating 0.53; ramp starts at 0.05 (ramp_rf.py); EGU says '
+           '"degrees" but it is dimensionless; on KY03 until 2026-10'),
     _value('gun_phase_req', 'gun_rf', 'Gun phase setpoint PREQ',
-           'SIOC:AS01:KY03:0:PREQ', 'SIOC:AS01:KY01:0:PREQ', 'deg',
-           CONFIRMED, 'in the run-7 list'),
+           'SIOC:AS01:KY01:0:PREQ', 'SIOC:AS01:KY01:0:PREQ', 'deg',
+           CONFIRMED, '-180..180; on KY03 until 2026-10'),
     _value('gun_amp_avg', 'gun_rf', 'Gun amplitude readback, averaged',
-           'SIOC:AS01:KY03:0:AACT_AVGNT', None, 'kV', CONFIRMED,
+           'SIOC:AS01:KY01:0:AACT_AVGNT', None, 'kV', CONFIRMED,
            'in the run-7 list'),
     _value('gun_phase_avg', 'gun_rf', 'Gun phase readback, averaged',
-           'SIOC:AS01:KY03:0:PACT_AVGNT', None, 'deg', CONFIRMED,
+           'SIOC:AS01:KY01:0:PACT_AVGNT', None, 'deg', CONFIRMED,
            'in the run-7 list'),
     _value('gun_pfb_enable', 'gun_rf', 'Phase feedback enable',
-           'SIOC:AS01:KY03:0:PFBENB', None, '', CONFIRMED),
+           'SIOC:AS01:KY01:0:PFBENB', None, '', CONFIRMED),
     _value('gun_afb_enable', 'gun_rf', 'Amplitude feedback enable',
-           'SIOC:AS01:KY03:0:AFBENB', None, '', CONFIRMED),
+           'SIOC:AS01:KY01:0:AFBENB', None, '', CONFIRMED),
     _value('gun_pfb_status', 'gun_rf', 'Phase feedback status',
-           'SIOC:AS01:KY03:0:PFBST', None, '', CONFIRMED),
+           'SIOC:AS01:KY01:0:PFBST', None, '', CONFIRMED),
     _value('gun_afb_status', 'gun_rf', 'Amplitude feedback status',
-           'SIOC:AS01:KY03:0:AFBST', None, '', CONFIRMED,
+           'SIOC:AS01:KY01:0:AFBST', None, '', CONFIRMED,
            'ramp_rf.py expects the string Active; reads Disable when off'),
     _value('gun_temp', 'gun_rf', 'Gun body temperature',
            'APC:AS01:TM01:M2_CH2_SPARE', 'APC:AS01:TM01:M2_CH2_SPARE', 'C',

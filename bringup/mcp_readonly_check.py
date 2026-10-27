@@ -27,6 +27,10 @@ HERE = Path(__file__).resolve().parent
 STAGES = ['gun_ramp', 'schottky_scan', 'set_bunch_charge', 'beam_on_screens',
           'align_collimator', 'overlap_pump_laser', 'tune_sample_position',
           'find_time_zero']
+# Read-only tools, called before the stages
+CHECKS = [('check_beam_prerequisites', {}), ('scope_charge', {'n': 3}),
+          ('list_positions', {}), ('measure_andor_spot', {}),
+          ('plan_beam_optimization', {})]
 
 
 async def main(out):
@@ -50,12 +54,20 @@ async def main(out):
         record['reads'] = (await call('machine_read', {
             'names': [ch['name'] for ch in channels]}))['values']
         record['read_wall_s'] = round(time.time() - t0, 1)
+        record['checks'] = {}
+        for tool, args in CHECKS:
+            r = await call(tool, args)
+            record['checks'][tool] = r
+            print(f'{tool:26s} {r.get("reason", "ok")}', flush=True)
         record['stages'] = {}
         for tool in STAGES:
             r = await call(tool)
-            record['stages'][tool] = {'ok': r['ok'], 'reason': r['reason'],
-                                      'wall_s': r.get('wall_s')}
-            print(f'{tool:22s} {r["reason"]}', flush=True)
+            record['stages'][tool] = {
+                'ok': r['ok'], 'reason': r['reason'],
+                'needs_operator': r.get('needs_operator'),
+                'channels_read': r.get('channels_read'),
+                'wall_s': r.get('wall_s')}
+            print(f'{tool:26s} {r["reason"]}', flush=True)
     answered = sum(not isinstance(v, dict) for v in record['reads'].values())
     print(f'{answered} of {len(record["reads"])} channels answered',
           flush=True)

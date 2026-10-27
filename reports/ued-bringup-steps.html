@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UED Bring-up Procedures</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Every step the ued_tuning tools take in the eight UED bring-up stages, with the PVs and values, for an expert to review.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a single reading column of numbered procedures, one section per
+   stage, with PV chips inline and amber "check" flags where the code guesses.
+   Same type and palette as the other UED bring-up reports. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --ink: #152030;
+  --muted: #586478;
+  --rule: #d8dee7;
+  --chip: #e8edf4;
+  --accent: #2456c9;
+  --flag-bg: #fbf0d6;
+  --flag-ink: #6f4a00;
+  --flag-rule: #e6c46f;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1219; --surface: #141b25; --ink: #e4e8ef; --muted: #96a1b3;
+    --rule: #283241; --chip: #1e2733; --accent: #82a4ff;
+    --flag-bg: #33290f; --flag-ink: #f2cf7a; --flag-rule: #6b5320;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1219; --surface: #141b25; --ink: #e4e8ef; --muted: #96a1b3;
+  --rule: #283241; --chip: #1e2733; --accent: #82a4ff;
+  --flag-bg: #33290f; --flag-ink: #f2cf7a; --flag-rule: #6b5320;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 16px/1.6 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 56px;
+}
+.wrap { max-width: 50rem; margin-inline: auto; display: grid; gap: 48px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(1.9rem, 4.5vw, 2.6rem); font-weight: 600; }
+h2 { font-size: 1.5rem; font-weight: 600; }
+h3 { font: 600 .8125rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+p { margin: 0; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code { font: .86em var(--mono); background: var(--chip); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.eyebrow { font: 500 .8125rem var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+
+.topbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block: 20px; border-bottom: 1px solid var(--rule); }
+.theme-btn { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; flex: none; font: 500 .875rem var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 999px; padding: 6px 14px; }
+.theme-btn:hover { border-color: var(--muted); }
+
+.intro { display: grid; gap: 16px; }
+.intro p { max-width: 64ch; }
+.lede { font-size: 1.125rem; }
+.legend-line { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; font-size: .9375rem; color: var(--muted); }
+
+nav.index { display: flex; flex-wrap: wrap; gap: 8px; }
+nav.index a { text-decoration: none; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 12px; font-size: .875rem; white-space: nowrap; }
+nav.index a:hover { border-color: var(--accent); color: var(--accent); }
+nav.index b { font-family: var(--mono); font-weight: 500; color: var(--muted); margin-right: 4px; }
+
+.stage { display: grid; gap: 18px; scroll-margin-top: 16px; }
+.stage-head { display: grid; gap: 6px; padding-bottom: 12px; border-bottom: 2px solid var(--ink); }
+.stage-head .num { font: 600 .8125rem var(--mono); color: var(--accent); letter-spacing: .04em; }
+.stage-head .tool { font-size: .9375rem; color: var(--muted); }
+.block { display: grid; gap: 8px; }
+ul.plain, ol.steps { margin: 0; padding-left: 1.4rem; display: grid; gap: 8px; }
+ol.steps > li { padding-left: 4px; }
+ol.steps > li::marker { font: 500 .875rem var(--mono); color: var(--muted); }
+ol.steps ul { margin: 6px 0 0; padding-left: 1.1rem; display: grid; gap: 4px; }
+li { max-width: 68ch; }
+.outcome { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; font-size: .9375rem; }
+.outcome dt { font: 500 .75rem var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding-top: 3px; }
+.outcome dd { margin: 0; min-width: 0; }
+@media (max-width: 520px) { .outcome { grid-template-columns: 1fr; } .outcome dd { margin-bottom: 6px; } }
+
+.flag { display: inline; background: var(--flag-bg); color: var(--flag-ink); border: 1px solid var(--flag-rule); border-radius: 5px; padding: 1px 6px; font-size: .9em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.flag b { font-weight: 600; }
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+th { font: 500 .75rem var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+footer { border-top: 1px solid var(--rule); padding-top: 16px; font-size: .875rem; color: var(--muted); display: grid; gap: 4px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <span class="eyebrow">UED bring-up · procedures for review · 2026-10-21</span>
+    <button class="theme-btn" id="theme-toggle" type="button">Dark theme</button>
+  </div>
+
+  <header class="intro">
+    <h1>UED bring-up procedures</h1>
+    <p class="lede">Every step the <code>ued_tuning</code> tools take in the eight bring-up stages, with the PVs and values they use, as the code stands on 2026-10-21. They follow the 2026-10-16 dry-run notes for stages 1–3 and Fuhao's procedures for stages 4–8.</p>
+    <p>On the real machine the tools are read-only for now, so these are the steps they would take once writes are allowed. Please read for anything wrong, missing or in the wrong order.</p>
+    <div class="legend-line"><span class="flag"><b>Check</b></span><span>marks a step where we guessed. Those are the ones to look at first.</span></div>
+    <nav class="index" aria-label="Stages">
+      <a href="#rules"><b>0</b>Every stage</a>
+      <a href="#stage-1"><b>1</b>Gun ramp-up</a>
+      <a href="#stage-2"><b>2</b>Schottky scan</a>
+      <a href="#stage-3"><b>3</b>Pulse charge</a>
+      <a href="#stage-4"><b>4</b>Beam on YAG &amp; Andor</a>
+      <a href="#stage-5"><b>5</b>Collimator</a>
+      <a href="#stage-6"><b>6</b>Laser overlap</a>
+      <a href="#stage-7"><b>7</b>Sample position</a>
+      <a href="#stage-8"><b>8</b>Time zero</a>
+      <a href="#values"><b>·</b>Values used</a>
+    </nav>
+  </header>
+
+  <section class="stage" id="rules" aria-labelledby="rules-h">
+    <div class="stage-head">
+      <span class="num">0 · RULES AND SHARED STEPS</span>
+      <h2 id="rules-h">What every stage does</h2>
+    </div>
+    <div class="block">
+      <h3>Start of every stage</h3>
+      <ol class="steps">
+        <li>Stages 2–8 read the four gate valves, <code>VVPG:AS01:240</code>, <code>:272</code>, <code>:280</code> and <code>:295:POSITION</code>. They stop, before writing anything, unless all four read <b>OPEN</b>. Stage 1 skips this.</li>
+        <li>Close the pump-laser shutter, <code>UED:USR:BHC:AO1:3</code> → 0. Any step that opens it closes it again, also when the step fails.</li>
+      </ol>
+    </div>
+    <div class="block">
+      <h3>On every write</h3>
+      <ul class="plain">
+        <li>The value is checked against its safety range in the setup file before it is sent. Out of range, the stage stops and nothing is written.</li>
+        <li>The diagnostic-screen inserter has no PV. Inserting or extracting it is an operator step, and the stage is told when it is done.</li>
+      </ul>
+    </div>
+    <div class="block">
+      <h3>Moving the sample stage ("go2YAG", "go2Andor", "go2Bi")</h3>
+      <ol class="steps">
+        <li>Close the pump shutter.</li>
+        <li>Read the taught position from the setup file: x, y, z [mm], pitch, yaw [deg]. If it isn't taught yet, stop and ask for it.</li>
+        <li>Check every axis against its safety range, then write <code>UED:USR:MMN:11:03</code> (x), <code>:11:04</code> (y), <code>:11:05</code> (z), <code>:11:01</code> (pitch) and <code>:11:08</code> (yaw).</li>
+        <li>Wait 5 s, then read the axes back; each must be within 0.01 of its target.</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> these XPS-11 axes are from the run-7 list, but their descriptions read "Incoupling X/Y", "Outcoupling", "Capillary Y" and "Catcher Y". Is the order (x, y, z, then pitch, yaw) safe, or should something retract first?</span></p>
+    </div>
+    <div class="block">
+      <h3>Camera views (sample chamber camera <code>UED:GIGE:03</code> and chamber light)</h3>
+      <ul class="plain">
+        <li><b>full view</b> (state 1): exposure 0.1 s, gain 0, light on.</li>
+        <li><b>e-beam view</b> (state 2): exposure 1 s, gain 10, light off. <span class="flag"><b>Check</b> procedure (4) says gain 30, the state list says 10.</span></li>
+        <li><b>laser view</b> (state 3): exposure 0.5 s, gain 5, light off.</li>
+        <li>The light is switched with <code>ACSW:AS01:NW03:2POWERON</code> / <code>:2POWEROFF</code> and read back from <code>:2POWERSTATE</code>.</li>
+      </ul>
+    </div>
+    <div class="block">
+      <h3>Changing the Andor settings</h3>
+      <p>Andor stop (<code>UED:ANDOR:CAM:03:Acquire</code> → 0), set <code>:AcquireTime</code> and <code>:AndorEMGain</code>, Andor start (→ 1), then wait one exposure plus 1 s.</p>
+    </div>
+    <div class="block">
+      <h3>E-beam check on the YAG (in stages 4, 6 and 8)</h3>
+      <ol class="steps">
+        <li>Move the sample stage to <b>yag</b>, then set the e-beam view.</li>
+        <li>Gun UV shutter (<code>UED:USR:BHC:AO1:4</code>) closed: read the camera 5 times. Then open: read 5 times. The e-beam is what appears with the shutter open, and it must make up more than half of the counts. Otherwise it is dark current only.</li>
+        <li>Compare the beam centroid with the cross, <code>UED:GIGE:03:Cross2X</code> / <code>Cross2Y</code>:
+          <ul>
+            <li>within 5 px: on the cross;</li>
+            <li>within 150 px: move the cross onto the beam (stages 4 and 6; stage 8 only checks);</li>
+            <li>farther: stop, and an operator judges.</li>
+          </ul></li>
+      </ol>
+      <p><span class="flag"><b>Check</b> the 5 px and 150 px thresholds.</span></p>
+      <p class="muted">Camera centroids and sizes are computed from the image itself (<code>IMAGE1:ArrayData</code>; <code>IMAGE2</code> on the Andor), because most of the cameras' Stats plugins are switched off.</p>
+    </div>
+    <div class="block">
+      <h3>Reading the charge on the scope</h3>
+      <ol class="steps">
+        <li>Read the 500-sample trace <code>SCOP:AS01:SC01:WF_CH2_TRACE</code> (in divisions) and the volts/div <code>:MBBO_CH2_SCL</code>.</li>
+        <li>Take the baseline as the median of the trace and the pulse as its largest dip below the baseline.</li>
+        <li>Convert: mV = dip × V/div, then charge = mV ÷ (−0.17 mV/fC). So −1.7 mV is 10 fC.</li>
+        <li>The pulse counts as detected when the dip is more than 5 times the trace noise. At 1 mV/div that is about 7 fC.</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> the procedure text names <code>WF_CH0_TRACE</code>; the V/div PV given and the dry run both point to CH2. The channel is a setting, CH2 now. The V/div record reads UDF: is there a readback?</span></p>
+    </div>
+  </section>
+
+  <section class="stage" id="stage-1" aria-labelledby="s1-h">
+    <div class="stage-head">
+      <span class="num">STAGE 1</span>
+      <h2 id="s1-h">Gun ramp-up</h2>
+      <span class="tool">tool <code>gun_ramp</code> · gun RF on the TS1 klystron, <code>SIOC:AS01:KY01:0:</code></span>
+    </div>
+    <div class="block">
+      <h3>Before it starts</h3>
+      <ul class="plain"><li>The operator confirms on the panel: AREQ at 0, the modulator in TRIG, HV at full voltage (VoltSet 980 V). These can't be read yet.</li></ul>
+    </div>
+    <div class="block">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li>Close the pump shutter.</li>
+        <li>Read <code>AREQ</code>. If it is parked above 0.05 (it read 0.2 on 2026-10-21), the next step lowers it.</li>
+        <li>Set <code>AREQ</code> → <b>0.05</b>.</li>
+        <li>Enable the phase and amplitude feedbacks: <code>PFBENB</code>, <code>AFBENB</code> → Enable. Wait 1 s.</li>
+        <li>Both <code>PFBST</code> and <code>AFBST</code> must read <b>Active</b>; otherwise abort.</li>
+        <li>Step <code>AREQ</code> from 0.05 to <b>0.53</b> in 300 steps, 2 s apart. Before each step:
+          <ul>
+            <li>the gun body temperature, <code>APC:AS01:TM01:M2_CH2_SPARE</code>, must be within 33–37 °C, else wait 2 s and read again; 10 out-of-range readings in a row abort;</li>
+            <li>both feedbacks must still read Active;</li>
+            <li>the amplitude readback <code>AACT_AVGNT</code> must track the setpoint: the ratio AACT/AREQ is calibrated over the first 3 steps, then must stay within 5 %; 5 misses in a row abort.</li>
+          </ul></li>
+      </ol>
+      <p><span class="flag"><b>Check</b> the readback check. AACT is in kV and AREQ is dimensionless (its EGU says "degrees"), so we compare their ratio, not the values. Is that how it should track?</span></p>
+    </div>
+    <dl class="outcome">
+      <dt>Abort</dt><dd><code>AREQ</code> → 0.</dd>
+      <dt>Done when</dt><dd><code>AREQ</code> is at 0.53 and both feedbacks read Active.</dd>
+    </dl>
+  </section>
+
+  <section class="stage" id="stage-2" aria-labelledby="s2-h">
+    <div class="stage-head">
+      <span class="num">STAGE 2</span>
+      <h2 id="s2-h">Schottky scan: emission phase</h2>
+      <span class="tool">tool <code>schottky_scan</code></span>
+    </div>
+    <div class="block">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li>Gate valves, then close the pump shutter.</li>
+        <li>Collimator at zero: if <code>UED:USR:MMN:14:07</code> is more than 0.05 mm from 0, move it to 0 and wait 5 s.</li>
+        <li>Diagnostic screen in (operator step).</li>
+        <li>Diagnostic camera <code>UED:GIGE:09</code>: read 3 times with the gun UV shutter closed, then 3 times open. Continue only if an e-beam shows on top of the dark current; otherwise stop.</li>
+        <li>UV throttle <code>UED:USR:MMN:14:01</code> → <b>51°</b>.</li>
+        <li>Read the scope 3 times to set the detection threshold (5 × noise, about 7 fC).</li>
+        <li>Coarse phase scan: <code>PREQ</code> from −180° to 175° in <b>5°</b> steps, 0.5 s settle, 3 scope traces at each.</li>
+        <li>The emission window is the longest run of phases above the threshold; its start is the edge.</li>
+        <li>Fine scan: ±5° around the edge in <b>0.5°</b> steps. The emission phase is where the charge first crosses the threshold, interpolated between points.</li>
+        <li>Set <code>PREQ</code> → emission + <b>30°</b>, wrapped to −180…180. Read 5 traces there.</li>
+        <li>Save a record: throttle, <code>PREQ</code>, the emission phase, the charge, the scope trace and the diagnostic-camera image.</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> the emission phase is taken as the onset, where the charge first rises above 5 σ of the scope noise. Should it be the onset, the half-maximum or the peak? And is the 30° added in the direction PREQ grows?</span></p>
+    </div>
+    <dl class="outcome">
+      <dt>Done when</dt><dd>A pulse is detected at the operating phase.</dd>
+      <dt>Stops for an operator</dt><dd>No e-beam on the diagnostic screen; no emission window above the threshold; the edge lost in the fine scan.</dd>
+    </dl>
+  </section>
+
+  <section class="stage" id="stage-3" aria-labelledby="s3-h">
+    <div class="stage-head">
+      <span class="num">STAGE 3</span>
+      <h2 id="s3-h">Pulse charge and UV feedback</h2>
+      <span class="tool">tool <code>set_bunch_charge</code></span>
+    </div>
+    <div class="block">
+      <h3>Before it starts</h3>
+      <ul class="plain"><li>The operator confirms Cameron's UV feedback loop is <b>stopped</b>: it drives the same throttle. Without that, the tool writes nothing.</li></ul>
+    </div>
+    <div class="block">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li>Gate valves, then close the pump shutter.</li>
+        <li>Diagnostic screen in (operator step); gun UV shutter open.</li>
+        <li>UV throttle → <b>53°</b>, wait 2 s, read 5 scope traces.</li>
+        <li>If the charge is outside 10 fC ± 10 %, fine-tune the throttle: first 1° (up if there is too much charge), then secant steps of at most 4°, within the throttle's safety range, up to 8 times.</li>
+        <li>Read 5 traces and save a record: throttle, charge, the scope dip in mV, <code>PREQ</code>, the trace.</li>
+        <li>Hand over to the operator to set up Cameron's loop:
+          <ul>
+            <li>at 10 fC (−1.7 mV) click "set low charge";</li>
+            <li>set 30 fC (−5.1 mV) and click "set high charge";</li>
+            <li>click "start feedback".</li>
+          </ul>
+          From then on the loop owns the throttle; the agent only watches the charge (<code>monitor_charge</code>, read-only).</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> where Cameron's loop lives, whether it has PVs, and what "continuously tune the UV throttle to keep ___" ends with.</span></p>
+      <p><span class="flag"><b>Check</b> the throttle's safety range, 45–60°, is a placeholder: the IOC allows ±180°.</span></p>
+    </div>
+    <dl class="outcome">
+      <dt>Done when</dt><dd>The charge is within 10 fC ± 10 %; then the hand-over.</dd>
+    </dl>
+  </section>
+
+  <section class="stage" id="stage-4" aria-labelledby="s4-h">
+    <div class="stage-head">
+      <span class="num">STAGE 4</span>
+      <h2 id="s4-h">Beam on the YAG and the Andor EMCCD</h2>
+      <span class="tool">tool <code>beam_on_screens</code></span>
+    </div>
+    <div class="block">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li>Gate valves, then close the pump shutter.</li>
+        <li>Diagnostic screen out (operator step). Collimator at 0 mm.</li>
+        <li>YAG: the e-beam check (see Every stage). It moves the cross onto the beam if the beam is near it, and stops if it is far.</li>
+        <li>Full view: exposure 0.1 s, gain 0, light on.</li>
+        <li>Andor: move the sample stage to <b>andor</b> (card out of the beam, cross in free space).</li>
+        <li>Andor stop → exposure <b>1 s</b>, gain <b>2</b> → start.</li>
+        <li>Read the Andor 3 times; the beam must show and not saturate.</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> the run-4 check inserted the far-detector phosphor here (<code>ASTA:BO:2114-9:BIT2</code>). Your list has it commented out and it doesn't answer. Is a phosphor step still needed?</span></p>
+    </div>
+    <dl class="outcome">
+      <dt>Done when</dt><dd>The e-beam is on the YAG cross (or the cross was moved onto it), and the beam is on the Andor without saturating.</dd>
+      <dt>Stops for an operator</dt><dd>No e-beam on the YAG; the e-beam far from the cross; no beam on the Andor, or saturated.</dd>
+    </dl>
+  </section>
+
+  <section class="stage" id="stage-5" aria-labelledby="s5-h">
+    <div class="stage-head">
+      <span class="num">STAGE 5</span>
+      <h2 id="s5-h">Alignment through the collimator</h2>
+      <span class="tool">tool <code>align_collimator</code>, then <code>plan_beam_optimization</code></span>
+    </div>
+    <div class="block">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li>Gate valves, then close the pump shutter.</li>
+        <li>Move the sample stage to <b>andor</b>; Andor stop → exposure 1 s, gain 2 → start. Gun UV open. Collimator at 0 mm.</li>
+        <li>The beam must show on the Andor (the prerequisite from stage 4); its counts are the reference with the collimator out.</li>
+        <li>Insert the collimator: <code>UED:USR:MMN:14:07</code> → 80, 88, then <b>90 mm</b> (the 200 µm hole), reading the Andor at each. The beam should be blocked first, then reappear cut.</li>
+        <li>Scan the motor over 90 ± 0.5 mm in 0.1 mm steps, Andor counts at each (3 reads, 2 s settle).</li>
+        <li>Fine scan ±0.1 mm around the best point in 0.02 mm steps. Set the motor at the peak of a parabola through the best three points.</li>
+        <li>Transmission = Andor counts with the collimator in ÷ counts out.</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> the insertion points (80 and 88 mm), the scan width (±0.5 mm), and the 2 % transmission we accept.</span></p>
+    </div>
+    <div class="block">
+      <h3>Then, the beam optimization (read-only plan for Badger)</h3>
+      <ol class="steps">
+        <li>Read the Andor spot: size √(σx·σy), counts, and offset from the image centre.</li>
+        <li>Build the routine:
+          <ul>
+            <li>variables Sol1, Sol2, XC/YC00, XC/YC01, XC/YC02, and optionally XC/YC04, each its current value ± 10 % of its safety range;</li>
+            <li>objective: minimize the Andor spot size;</li>
+            <li>constraints: Andor counts at least 0.8 × now (a proxy for the transmitted charge), and the offset from the Andor centre under 100 px when XC/YC04 are in.</li>
+          </ul>
+          The multi-objective form maximizes the counts as a second objective instead of constraining them.</li>
+        <li>An operator runs it in Badger. It escalates if it hasn't cut the spot size by 10 % within 50 evaluations.</li>
+        <li>After it, check the e-beam on the YAG cross again: XC/YC01–02 should have kept the pointing there.</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> the proposal has the agent run this routine itself and escalate only if it doesn't converge. Today the agent prepares it and an operator runs it.</span></p>
+      <p><span class="flag"><b>Check</b> on the real machine the magnets are in BCTRL units: kG-m, or A for SOL2 and XC/YC04. Which PV sets a corrector kick, <code>BCTRL</code> or <code>BDES</code>?</span></p>
+    </div>
+    <dl class="outcome">
+      <dt>Done when</dt><dd>Transmission is at least 2 % and the best motor position isn't at the edge of the scan.</dd>
+      <dt>Stops for an operator</dt><dd>No beam on the Andor with the collimator out; no transmission anywhere in the scan (the beam misses the hole: steer with XC/YC00).</dd>
+    </dl>
+  </section>
+
+  <section class="stage" id="stage-6" aria-labelledby="s6-h">
+    <div class="stage-head">
+      <span class="num">STAGE 6</span>
+      <h2 id="s6-h">E-beam / pump-laser spatial overlap</h2>
+      <span class="tool">tool <code>overlap_pump_laser</code></span>
+    </div>
+    <div class="block">
+      <h3>Before it starts</h3>
+      <ul class="plain"><li>The pump HWP angle for minimal energy, from the laser team, is in the setup file.</li></ul>
+    </div>
+    <div class="block">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li>Gate valves, then close the pump shutter.</li>
+        <li>The e-beam check on the YAG (see Every stage); the cross is moved onto the e-beam if it is near.</li>
+        <li>Light stays off; laser view: exposure 0.5 s, gain 5.</li>
+        <li>Pump HWP <code>UED:USR:MMN:05:02</code> → its minimal-energy setpoint.</li>
+        <li>Pump power meter <code>UED:USR:MMN:05:06</code> → 0 mm (out of the beam; it read 40 mm, in, on 2026-10-21).</li>
+        <li>Gun UV shutter closed, so the laser is alone on the YAG.</li>
+        <li>Open the pump shutter, <code>UED:USR:BHC:AO1:3</code> → 1, and wait 3 s.</li>
+        <li>Steer the laser onto the cross:
+          <ul>
+            <li>measure the response: pump H then V each +0.2 mm, the laser centroid after each;</li>
+            <li>correct at most 0.5 mm per step, up to 6 times, until within 1.5 px.</li>
+          </ul></li>
+        <li><b>Close the pump shutter</b>. This is critical, and happens even if a step fails.</li>
+        <li>Gun UV open; full view (light on).</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> "pump laser mirror H and V": we drive the run-7 list's pump lens H/V (<code>UED:USR:MMN:08:05</code> / <code>:08:06</code>). Or is it the SmarAct <code>UED:MCS:01:m7</code> / <code>m8</code> ("pump_beam_X/Y")?</span></p>
+      <p><span class="flag"><b>Check</b> closing the gun UV during the laser view, and taking the power meter out, are our additions.</span></p>
+    </div>
+    <dl class="outcome">
+      <dt>Done when</dt><dd>The laser is within 3 px of the cross and the e-beam is on it.</dd>
+      <dt>Stops for an operator</dt><dd>The e-beam not on the YAG, or far from the cross; the laser not seen.</dd>
+    </dl>
+  </section>
+
+  <section class="stage" id="stage-7" aria-labelledby="s7-h">
+    <div class="stage-head">
+      <span class="num">STAGE 7</span>
+      <h2 id="s7-h">Sample-position tuning</h2>
+      <span class="tool">tool <code>tune_sample_position</code></span>
+    </div>
+    <div class="block">
+      <h3>Before it starts</h3>
+      <ul class="plain"><li>The sample's taught position and the Andor through hole (pixel centre and radius) are in the setup file.</li></ul>
+    </div>
+    <div class="block">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li>Gate valves, then close the pump shutter. Full view.</li>
+        <li>Move the sample stage to the sample (e.g. <b>bi</b>).</li>
+        <li>Andor stop → exposure 1 s, gain 2 → start; gun UV open.</li>
+        <li>Steer the main beam into the Andor's through hole with XC04/YC04 (<code>XCOR:AS01:381</code>, <code>YCOR:AS01:382</code>):
+          <ul>
+            <li>measure the response: each +0.2;</li>
+            <li>correct at most 1 per step, up to 6 times, until the main beam vanishes (Andor counts below 10 % of the start).</li>
+          </ul>
+          Stop if it stays outside.</li>
+        <li>Andor stop → exposure <b>2 s</b>, gain <b>1000</b> → start (Bi). Stop, back at the low-gain settings, if the image saturates.</li>
+        <li>Raster the stage around the taught position: x and y ± 0.15 mm, 7 × 7 points, 1 s settle. At each, read the total scattering intensity (Andor counts) and a pattern score where one exists.</li>
+        <li>Move to the best point: intensity × score, or intensity alone when there is no score.</li>
+        <li>Single crystal only: raster pitch and yaw ± 0.5°, 5 × 5, and keep the best.</li>
+        <li>Save a record: position, intensity, score, the main settings (phase, amplitude, UV throttle, solenoids, collimator, pump HWP, delay, Andor exposure and gain, correctors), the Andor image and the chamber-camera image.</li>
+        <li>Stop for the operator to judge the pattern. Once approved, the position is saved to the setup file (<code>save_position</code>).</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> the raster span (±0.15 mm) and the 1 s settle. Is total Andor intensity a fair first cut before the operator looks?</span></p>
+    </div>
+    <dl class="outcome">
+      <dt>Done when</dt><dd>Never alone: an operator judges the pattern (ring sharpness, symmetry, one clean domain).</dd>
+      <dt>Stops early</dt><dd>The main beam not in the through hole; the Andor saturated; no diffraction anywhere in the raster.</dd>
+    </dl>
+  </section>
+
+  <section class="stage" id="stage-8" aria-labelledby="s8-h">
+    <div class="stage-head">
+      <span class="num">STAGE 8</span>
+      <h2 id="s8-h">Time zero</h2>
+      <span class="tool">tool <code>find_time_zero</code></span>
+    </div>
+    <div class="block">
+      <h3>Before it starts</h3>
+      <ul class="plain"><li>The pump HWP angle for ~2 µJ, from the laser group, is in the setup file.</li></ul>
+    </div>
+    <div class="block">
+      <h3>Steps</h3>
+      <ol class="steps">
+        <li>Verify the spatial overlap, without steering:
+          <ul>
+            <li>run the e-beam check on the YAG (the cross is not moved);</li>
+            <li>then the laser at minimal energy in the laser view, the power meter out, the gun UV closed, the pump shutter open;</li>
+            <li>the e-beam and the laser must both be within 3 px of the cross;</li>
+            <li>pump shutter closed, gun UV open, full view.</li>
+          </ul>
+          If not overlapped, stop: run stage 6 again.</li>
+        <li>Gate valves, then close the pump shutter.</li>
+        <li>Move the sample stage to the sample (<b>bi</b>).</li>
+        <li>Andor stop → exposure 2 s, gain 1000 → start; gun UV open.</li>
+        <li>Pump HWP → its ~2 µJ setpoint; power meter out.</li>
+        <li>Open the pump shutter.</li>
+        <li>Delay scan on <code>UED:USR:MMN:03:04</code>:
+          <ul>
+            <li>±3 mm in 31 points, fit an error function to the Bragg-peak drop;</li>
+            <li>zoom to ±0.3 mm, then ±0.03 mm, around the fitted t₀, until t₀ is known to 5 µm;</li>
+            <li>set the delay to t₀.</li>
+          </ul></li>
+        <li><b>Close the pump shutter</b>, also if a step fails. Save a record.</li>
+      </ol>
+      <p><span class="flag"><b>Check</b> on the real machine the scan runs in the LCLS DAQ or the Run 6 BOED script; the tool's scan is a stand-in. Where does the BOED script live, and which Bragg peaks does it follow? The delay's mm-to-fs calibration and its sign are also open.</span></p>
+    </div>
+    <dl class="outcome">
+      <dt>Done when</dt><dd>t₀ is known to 5 µm and the Bragg drop is clear.</dd>
+      <dt>Stops for an operator</dt><dd>The overlap check fails; no t₀ in the coarse window.</dd>
+    </dl>
+  </section>
+
+  <section class="stage" id="values" aria-labelledby="v-h">
+    <div class="stage-head">
+      <span class="num">VALUES</span>
+      <h2 id="v-h">Values the steps use</h2>
+      <span class="tool">from the setup file, <code>/sdf/group/mli/zhezhang/ued/agentic/config/ued_setup.yaml</code></span>
+    </div>
+    <div class="block">
+      <h3>Still empty, to be taught or given</h3>
+      <ul class="plain">
+        <li>Sample-stage positions: <b>yag</b>, <b>andor</b>, <b>bi</b>, <b>si</b>.</li>
+        <li>Pump HWP angles: minimal energy, and ~2 µJ for pump-probe.</li>
+        <li>The Andor through hole: pixel centre and radius.</li>
+      </ul>
+    </div>
+    <div class="block">
+      <h3>Safety ranges</h3>
+      <p class="muted">Seeded 2026-10-21 from the motors' soft limits (HLM/LLM) and the magnets' drive limits (DRVH/DRVL), read on ued-daq.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Channel</th><th>PV</th><th class="num">Range</th></tr></thead>
+          <tbody>
+            <tr><td>Sample x / y / z</td><td><code>UED:USR:MMN:11:03 / :04 / :05</code></td><td class="num">−25…0 / −24.8…5 / 0.05…24.95 mm</td></tr>
+            <tr><td>Sample pitch / yaw</td><td><code>UED:USR:MMN:11:01 / :08</code></td><td class="num">−11.5…−9.6 / −36…0°</td></tr>
+            <tr><td>Collimator</td><td><code>UED:USR:MMN:14:07</code></td><td class="num">0…96 mm</td></tr>
+            <tr><td>Pump long delay</td><td><code>UED:USR:MMN:03:04</code></td><td class="num">0…300 mm</td></tr>
+            <tr><td>Pump HWP <span class="flag"><b>Check</b> placeholder</span></td><td><code>UED:USR:MMN:05:02</code></td><td class="num">0…180°</td></tr>
+            <tr><td>Pump ND wheel</td><td><code>UED:USR:MMN:05:08</code></td><td class="num">40…370°</td></tr>
+            <tr><td>Pump power meter</td><td><code>UED:USR:MMN:05:06</code></td><td class="num">0…40.1 mm</td></tr>
+            <tr><td>Pump lens H / V</td><td><code>UED:USR:MMN:08:05 / :06</code></td><td class="num">0…25 mm</td></tr>
+            <tr><td>UV throttle <span class="flag"><b>Check</b> placeholder</span></td><td><code>UED:USR:MMN:14:01</code></td><td class="num">45…60°</td></tr>
+            <tr><td>Gun AREQ / PREQ</td><td><code>SIOC:AS01:KY01:0:AREQ / PREQ</code></td><td class="num">0…0.53 / −180…180°</td></tr>
+            <tr><td>Sol1 / Sol2</td><td><code>SOLN:AS01:121 / 311:BCTRL</code></td><td class="num">0…0.55 kG-m / 0…15 A</td></tr>
+            <tr><td>XC/YC00</td><td><code>X/YCOR:AS01:121 / 122:BCTRL</code></td><td class="num">±521 / ±220</td></tr>
+            <tr><td>XC/YC01</td><td><code>X/YCOR:AS01:221 / 222:BCTRL</code></td><td class="num">±107.5 / ±110</td></tr>
+            <tr><td>XC/YC02</td><td><code>X/YCOR:AS01:321 / 322:BCTRL</code></td><td class="num">±35.9 / ±39</td></tr>
+            <tr><td>XC/YC03</td><td><code>X/YCOR:AS01:341 / 342:BCTRL</code></td><td class="num">±120 / ±120</td></tr>
+            <tr><td>XC/YC04</td><td><code>X/YCOR:AS01:381 / 382:BCTRL</code></td><td class="num">±12 / ±12 A</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Generated from <code>bringup/ued_tuning/stages.py</code>, <code>bringup/ued_automation.py</code> and <code>bringup/ued_setup.yaml</code> in the ued-agentic-run repo, 2026-10-21.</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement, btn = document.getElementById('theme-toggle');
+  var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  try {
+    var saved = localStorage.getItem('ued-bringup-theme');
+    if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+  function current() {
+    var t = root.getAttribute('data-theme');
+    return t === 'light' || t === 'dark' ? t : (mq && mq.matches ? 'dark' : 'light');
+  }
+  function sync() { btn.textContent = current() === 'dark' ? 'Light theme' : 'Dark theme'; }
+  btn.addEventListener('click', function () {
+    var next = current() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('ued-bringup-theme', next); } catch (e) {}
+    sync();
+  });
+  if (mq && mq.addEventListener) mq.addEventListener('change', sync);
+  new MutationObserver(sync).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  sync();
+})();
+</script>
+</body>
+</html>

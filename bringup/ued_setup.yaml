@@ -1,0 +1,103 @@
+# UED setup for the bring-up tools: taught positions, camera views, laser and
+# collimator setpoints, and the safety ranges every write is checked against.
+#
+# One editable file for the agent and the operators (Fuhao's automation
+# notes 5b and 5d). This is the reviewed seed in the ued-agentic-run repo;
+# the live copy the tools read is $UED_SETUP_FILE, by default
+# /sdf/group/mli/zhezhang/ued/agentic/config/ued_setup.yaml. Edit the live
+# copy during a shift; copy changes back here when they should stick.
+#
+# Units are the machine's: mm and deg for motors, s for exposures.
+# null means "not known yet": a tool that needs it stops and asks.
+
+# Taught sample-stage positions, one per line: x y z [mm], pitch yaw [deg].
+# save_position writes these lines (and keeps a backup of the file); the
+# run-4 coordinates were on the old PI stage and don't carry over.
+positions:
+  yag: null      # sample-chamber YAG screen ("go2YAG"), where the e-beam cross is
+  andor: null    # sample card out, cross in free space ("go2Andor"), beam to the far detector
+  bi: null       # Bi sample ("go2Bi")
+  si: null       # Si sample
+
+# Sample chamber camera (UED:GIGE:03) plus the chamber light, the three
+# states of Fuhao's procedure. ebeam and laser may need retuning for other
+# pulse charges and pump wavelengths. Procedure (4) step 4 says gain 30 for
+# the e-beam view; the state list says 10.
+camera_views:
+  full_view: {exposure: 0.1, gain: 0, light: 1}     # state 1: sample chamber full view
+  ebeam: {exposure: 1.0, gain: 10, light: 0}        # state 2: e-beam on the YAG
+  laser: {exposure: 0.5, gain: 5, light: 0}         # state 3: pump laser on the YAG
+
+# Far-detector Andor (UED:ANDOR:CAM:03): stopped, set, started again.
+andor:
+  check: {exposure: 1.0, gain: 2}            # beam check, collimator scans
+  diffraction: {exposure: 2.0, gain: 1000}   # Bi; set per sample
+  through_hole_px: null       # [x, y] of the main-beam through hole on the Andor image
+  through_hole_radius_px: null
+
+# Pump laser. HWP angles come from the laser team before the experiment.
+pump:
+  hwp_min_energy_deg: null    # minimal energy, for overlap on the YAG
+  hwp_pump_probe_deg: null    # ~2 uJ, for time zero on Bi
+  power_meter_out_mm: 0.0
+  power_meter_in_mm: 40.0
+
+collimator:
+  out_mm: 0.0
+  nominal_mm: 90.0            # the 200 um hole
+  scan_half_width_mm: 0.5     # tuning range around nominal
+
+gun:
+  uv_throttle_scan_deg: 51    # higher UV for the emission-phase scan
+  uv_throttle_operating_deg: 53
+  phase_from_emission_deg: 30
+  target_charge_fC: 10
+
+# Oscilloscope with the bunch-charge pulse. The dry run confirmed CH2 (its
+# V/div PV is MBBO_CH2_SCL, which Fuhao gave); his procedure text names
+# WF_CH0_TRACE. channel picks the one the tools read.
+scope:
+  channel: 2
+  mV_per_fC: -0.17            # -1.7 mV below baseline = 10 fC
+
+# The e-beam on the YAG should sit near the cross. Within this distance the
+# tools move the cross onto the beam; farther, an operator decides.
+cross:
+  on_cross_px: 5
+  max_move_px: 150
+
+# Safety ranges, checked before every write the tools make (note 5d).
+# Seeded 2026-10-21 from the motors' soft limits (HLM/LLM) and the magnets'
+# drive limits (DRVH/DRVL), read from ued-daq. The pump HWP and the UV
+# throttle have no useful IOC limits (+/-1e6, +/-180); their ranges below are
+# placeholders to confirm. Correctors are in BCTRL units on the real machine.
+limits:
+  sample_x: [-25.0, 0.0]
+  sample_y: [-24.8, 5.0]
+  sample_z: [0.05, 24.95]
+  sample_pitch: [-11.5, -9.6]
+  sample_yaw: [-36.0, 0.0]
+  collimator: [0.0, 96.0]
+  delay: [0.0, 300.0]
+  pump_hwp: [0.0, 180.0]          # placeholder
+  pump_nd_wheel: [40.0, 370.0]
+  pump_power_meter: [0.0, 40.1]
+  pump_lens_h: [0.0, 25.0]
+  pump_lens_v: [0.0, 25.0]
+  gun_uv_throttle: [45.0, 60.0]   # placeholder
+  areq: [0.0, 0.53]
+  preq: [-180.0, 180.0]
+  sol1: [0.0, 0.55]
+  sol2: [0.0, 15.0]
+  xc00: [-521.0, 521.0]
+  yc00: [-220.0, 220.0]
+  xc01: [-107.5, 107.5]
+  yc01: [-110.0, 110.0]
+  xc02: [-35.9, 35.9]
+  yc02: [-39.0, 39.0]
+  xc03: [-120.0, 120.0]
+  yc03: [-120.0, 120.0]
+  xc04: [-12.0, 12.0]
+  yc04: [-12.0, 12.0]
+  cam_sample_yag.cross_x: [0, 2048]
+  cam_sample_yag.cross_y: [0, 2048]
