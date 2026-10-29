@@ -1,0 +1,8 @@
+# On top of the analysis env in s3df/env.sh (numpy, pandas, scipy, matplotlib, jupyter).
+#   source /sdf/group/mli/zhezhang/ued/agentic/scripts/env.sh
+#   uv pip install -r boed/requirements.txt
+# Use the CUDA build of torch on S3DF GPU nodes.
+torch>=2.1
+numpy
+matplotlib
+tqdm
