@@ -35,9 +35,8 @@ SEED = HERE / 'ued_setup.yaml'
 LIVE_DEFAULT = Path('/sdf/group/mli/zhezhang/ued/agentic/config/'
                     'ued_setup.yaml')
 RECORDS_DEFAULT = Path('/sdf/group/mli/zhezhang/ued/agentic/records')
-# The axes the tools read and move. Pitch (MMN:11:01) and yaw (MMN:11:08)
-# are left out on purpose (Fuhao, 2026-10-28): their IOC soft limits are
-# stale (pitch -11.5..-9.6, yaw -36..0), so the tools never touch them;
+# The axes the tools read and move. Pitch (MMN:04:04) and yaw (UM1:MMS:03)
+# are left out on purpose (Fuhao, 2026-10-28): the tools never touch them;
 # an operator sets them by hand. Pitch/yaw fields in a position are kept
 # as notes and never moved.
 AXES = ('x', 'y', 'z')
@@ -97,7 +96,7 @@ def missing(setup) -> list:
     """The setup entries that are still null (positions, setpoints)."""
     out = [f'positions.{k}' for k, v in (setup.get('positions') or {}).items()
            if v is None]
-    for sect in ('andor', 'pump'):
+    for sect in ('andor', 'pump', 'limits'):
         out += [f'{sect}.{k}' for k, v in (setup.get(sect) or {}).items()
                 if v is None]
     return out
@@ -149,6 +148,8 @@ def validate(setup) -> list:
         if not any(a in p for a in AXES):
             probs.append(f'{where}: no stage axis ({", ".join(AXES)})')
     for k, lim in (setup.get('limits') or {}).items():
+        if lim is None:                   # not set yet: missing() lists it
+            continue
         ok = (isinstance(lim, list) and len(lim) == 2
               and all(isinstance(x, (int, float)) for x in lim)
               and lim[0] < lim[1])
@@ -278,7 +279,21 @@ def readiness(m, setup) -> dict:
     if pm > 0.85 * pm_in:                 # Xinxin: > 35 with in = 40
         warn.append(f'pump power meter is IN ({pm:g} mm): it blocks the '
                     'pump; take it out before pump-probe')
-    out['not_checked'] = ['pump outcoupling mirror (no PV mapped this run)']
+    nc = []
+    pos_out = (setup.get('pump') or {}).get('outcoupling_out_mm')
+    pos_in = (setup.get('pump') or {}).get('outcoupling_in_mm')
+    try:
+        oc = float(m.get('pump_outcoupling'))
+        out['pump_outcoupling_mm'] = oc
+        if pos_out is None or pos_in is None:
+            nc.append('pump outcoupling mirror IN/OUT: pump.outcoupling_'
+                      'out_mm / outcoupling_in_mm not set; ask the operator')
+        elif abs(oc - float(pos_in)) < abs(oc - float(pos_out)):
+            warn.append(f'pump outcoupling mirror is IN ({oc:g} mm): it '
+                        'blocks the pump; take it out before pump-probe')
+    except Exception as exc:              # report, don't block
+        nc.append(f'pump outcoupling mirror unreadable ({exc})')
+    out['not_checked'] = nc
     out['warnings'] = warn
     return out
 

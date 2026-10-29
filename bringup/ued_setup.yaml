@@ -10,10 +10,10 @@
 # Units are the machine's: mm and deg for motors, s for exposures.
 # null means "not known yet": a tool that needs it stops and asks.
 
-# Taught sample-stage positions (SUED stage, XPS-11), one line each:
+# Taught sample-stage positions (1st chamber SUED stage), one line each:
 #   name: {x: .., y: .., z: .., pump_hwp_deg: .., note: "..."}
 # x, y, z in mm; an axis left out isn't moved. The tools never move the
-# sample pitch or yaw (stale IOC soft limits): set them by hand. Extra
+# sample pitch or yaw: set them by hand. Extra
 # fields (a note, a hand-set pitch/yaw to remember) are allowed, kept on
 # re-save, and never moved; pump_hwp_deg is the one go_to applies (the pump
 # energy for that sample, Xinxin's per-sample HWP).
@@ -63,6 +63,11 @@ pump:
   hwp_pump_probe_deg: 16.245  # ~2 uJ, for time zero on Bi
   power_meter_out_mm: 0.0
   power_meter_in_mm: 40.0
+  # 1st chamber outcoupling mirror (UED:USR:MMN:04:02): its OUT and IN
+  # positions, for the readiness check. Read them on the machine. Xinxin's
+  # earlier runs: OUT ~0.1-1, IN ~18-24 (her rule: IN when > 17).
+  outcoupling_out_mm: null
+  outcoupling_in_mm: null
 
 collimator:
   out_mm: 0.0
@@ -78,9 +83,10 @@ gun:
   ramp_dwell_s: 2.0
   # Gun body temperature window: the ramp holds before a step while the
   # temperature is outside it, and aborts (AREQ -> 0) after 10 readings in a
-  # row outside. Ceiling lowered from 37 to 36 C for the reduced flow.
+  # row outside. 33-37 C as in Joel's ramp_rf.py: the gun idled at 36.4 C
+  # with the RF off on 2026-10-28, so a 36 C ceiling would abort at once.
   ramp_temp_min_C: 33.0
-  ramp_temp_max_C: 36.0
+  ramp_temp_max_C: 37.0
   uv_throttle_scan_deg: 51    # higher UV for the emission-phase scan
   uv_throttle_operating_deg: 53
   phase_from_emission_deg: 30
@@ -105,13 +111,17 @@ cross:
 # throttle have no useful IOC limits (+/-1e6, +/-180); their ranges below are
 # placeholders to confirm. Correctors are in BCTRL units on the real machine.
 limits:
-  sample_x: [-25.0, 0.0]
-  sample_y: [-24.8, 5.0]
-  sample_z: [0.05, 24.95]
-  # Sample pitch and yaw: not driven by the tools for now (their channels
-  # are read-only). Kept for when they are: small angles around 0 (up to
-  # ~5 deg, Fuhao 2026-10-28), once the stale IOC soft limits (pitch
-  # -11.5..-9.6, yaw -36..0, read 2026-10-21) are reset.
+  # Sample stage: new PVs on 2026-10-28 (x UM1:MMS:02, y MMN:04:01, z
+  # UM1:MMS:01). The earlier ranges were XPS-11's (jet hardware) and are
+  # gone. Read 2026-10-28: y has IOC soft limits 0..25 (used below); the IMS
+  # motors x, z (and yaw) have LLM = HLM = 0, i.e. no IOC soft limits, so
+  # these ranges are their only software limit: set them from the travel
+  # the sample holder allows (null = not set yet, listed by `check`).
+  sample_x: null
+  sample_y: [0.0, 25.0]
+  sample_z: null
+  # Pitch (MMN:04:04) and yaw (UM1:MMS:03): read-only for the tools for
+  # now; kept for when they aren't (small angles, up to ~5 deg).
   sample_pitch: [-5.0, 5.0]
   sample_yaw: [-5.0, 5.0]
   collimator: [0.0, 96.0]

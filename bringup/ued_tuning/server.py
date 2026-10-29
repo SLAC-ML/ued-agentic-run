@@ -285,7 +285,7 @@ async def gun_ramp(target: float = 0.53, n_steps: int | None = None,
                    dwell_s: float | None = None) -> str:
     """Stage 1: ramp the gun amplitude setpoint AREQ (KY03, TS8) from 0.05 to
     target, holding while the gun body temperature is outside its window
-    (gun.ramp_temp_min_C..ramp_temp_max_C in the setup file, 33-36 C) and
+    (gun.ramp_temp_min_C..ramp_temp_max_C in the setup file, 33-37 C) and
     aborting to AREQ = 0 on a temperature run-away, a feedback trip, or an
     amplitude readback that stops tracking. Leave n_steps and dwell_s unset:
     they come from gun.ramp_n_steps / gun.ramp_dwell_s in the setup file
