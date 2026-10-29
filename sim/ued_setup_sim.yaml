@@ -15,6 +15,12 @@ camera_views:
   full_view: {exposure: 0.1, gain: 0, light: 1}
   ebeam: {exposure: 1.0, gain: 10, light: 0}
   laser: {exposure: 0.5, gain: 5, light: 0}
+  high: {exposure: 1.5, gain: 18}
+  mid: {exposure: 0.2, gain: 5}
+  low: {exposure: 0.02, gain: 0}
+
+motion:
+  camera_view: mid
 
 andor:
   check: {exposure: 1.0, gain: 2}
@@ -34,6 +40,10 @@ collimator:
   scan_half_width_mm: 0.5
 
 gun:
+  ramp_n_steps: 600               # 20 min, as on the machine (2026-10-28)
+  ramp_dwell_s: 2.0
+  ramp_temp_min_C: 33.0
+  ramp_temp_max_C: 36.0
   uv_throttle_scan_deg: 51
   uv_throttle_operating_deg: 53
   phase_from_emission_deg: 30

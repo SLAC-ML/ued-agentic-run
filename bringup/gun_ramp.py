@@ -24,16 +24,16 @@ from dataclasses import dataclass, field
 from typing import List
 
 # Machine PVs behind the backend names, for reference only: the live map
-# is ued_tuning/channels.py. The gun is on the TS1 klystron KY01 again
-# (2026-10, run 4's), after a spell on TS8 (KY03).
+# is ued_tuning/channels.py. The gun is on the TS8 klystron KY03
+# (since 2026-10-28; TS1/KY01 is offline).
 PVS = {
-    'areq': 'SIOC:AS01:KY01:0:AREQ',          # amplitude setpoint
-    'pfb_enable': 'SIOC:AS01:KY01:0:PFBENB',  # phase feedback on
-    'afb_enable': 'SIOC:AS01:KY01:0:AFBENB',  # amplitude feedback on
-    'pfb_status': 'SIOC:AS01:KY01:0:PFBST',
-    'afb_status': 'SIOC:AS01:KY01:0:AFBST',
+    'areq': 'SIOC:AS01:KY03:0:AREQ',          # amplitude setpoint
+    'pfb_enable': 'SIOC:AS01:KY03:0:PFBENB',  # phase feedback on
+    'afb_enable': 'SIOC:AS01:KY03:0:AFBENB',  # amplitude feedback on
+    'pfb_status': 'SIOC:AS01:KY03:0:PFBST',
+    'afb_status': 'SIOC:AS01:KY03:0:AFBST',
     'gun_temp': 'APC:AS01:TM01:M2_CH2_SPARE',  # gun body temperature [C]
-    'aact': 'SIOC:AS01:KY01:0:AACT_AVGNT',    # amplitude readback (avg, kV)
+    'aact': 'SIOC:AS01:KY03:0:AACT_AVGNT',    # amplitude readback (avg, kV)
 }
 
 AREQ_MAX = 0.53

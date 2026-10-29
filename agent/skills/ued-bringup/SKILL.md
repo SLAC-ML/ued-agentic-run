@@ -28,8 +28,19 @@ operator.
 2. For a beam stage (2-8), call `check_beam_prerequisites`. All four gate
    valves (`gv240`, `gv272`, `gv280`, `gv295`) must read OPEN. If one doesn't,
    stop and tell the operator which ones; the stage tools stop there anyway.
+   Relay every entry in its `warnings` (pump power meter IN, a closed
+   valve) and its `not_checked` list (the pump outcoupling mirror has no PV:
+   ask the operator to confirm it is out before pump-probe). The ePix valve
+   `gv320` is reported for information only.
 
 ## Rules
+
+- **Diagnostic screen.** The screen (YAGS:AS01:270) is moved by an operator,
+  never by the agent. When a stage asks for it, ask the operator to insert or
+  remove it from the panel, then read `diag_screen_state` and
+  `diag_screen_interlock` with `machine_read` and report them before rerunning
+  the stage with `diag_screen_by_operator=true`. If the interlock is not OK,
+  or the state doesn't match the request, stop and tell the operator.
 
 - **Pump-laser shutter.** The tools close it first, and again after any step
   that opens it. If a tool fails in the middle of a step that had the pump
@@ -57,8 +68,16 @@ operator.
 
 Notes per stage:
 
-- **1.** If AREQ was parked above 0.05 (KY01 sat at 0.2 on 2026-10-21), the
-  ramp's first step lowers it to 0.05. Tell the operator before starting.
+- **1.** The gun runs on the TS8 klystron (KY03). If AREQ was parked above
+  0.05, the ramp's first step lowers it to 0.05. Tell the operator before starting.
+  The ramp takes **about 20 min** (600 steps of 2 s, from `gun.ramp_n_steps`
+  and `gun.ramp_dwell_s` in the setup file): it was slowed from 10 min for
+  the reduced gun cooling-water flow. Don't pass `n_steps` or `dwell_s`
+  unless the operator asks; say how long the ramp will take before starting.
+  The gun body temperature window is 33-36 C (`gun.ramp_temp_min_C` /
+  `ramp_temp_max_C`; the ceiling was lowered from 37 C for the same reason).
+  Holds near 36 C late in the ramp are expected; report them. If the ramp
+  aborts on temperature, tell the operator and don't restart it unasked.
 - **2.** "Emission phase" here is the onset, where the scope charge first rises
   5 sigma above the trace noise, with the UV throttle at ~51. The operator may
   define it differently (half-max, peak); ask if the result looks off. The
@@ -76,9 +95,10 @@ Notes per stage:
   cross onto the beam; farther, the operator decides.
 - **7.** There is no single objective for a good pattern. Report the total
   scattering intensity and, where a score exists, the pattern quality, and let
-  the operator judge (sharp features, one clean domain; for a single crystal,
-  pitch and yaw balance the symmetry: `single_crystal=true`). Save the
-  position only after the operator agrees.
+  the operator judge (sharp features, one clean domain). For a single
+  crystal the symmetry is balanced with the sample pitch and yaw, which the
+  tools don't move for now (stale IOC soft limits): ask the operator to set
+  them by hand. Save the position only after the operator agrees.
 - **8.** On the real machine the delay scan runs in the LCLS DAQ or the Run 6
   BOED script; the tool's erf-fit scan is a stand-in.
 

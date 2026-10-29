@@ -10,16 +10,25 @@
 # Units are the machine's: mm and deg for motors, s for exposures.
 # null means "not known yet": a tool that needs it stops and asks.
 
-# Taught sample-stage positions, one per line: x y z [mm], pitch yaw [deg].
-# save_position writes these lines (and keeps a backup of the file); the
-# run-4 coordinates were on the old PI stage and don't carry over.
+# Taught sample-stage positions (SUED stage, XPS-11), one line each:
+#   name: {x: .., y: .., z: .., pump_hwp_deg: .., note: "..."}
+# x, y, z in mm; an axis left out isn't moved. The tools never move the
+# sample pitch or yaw (stale IOC soft limits): set them by hand. Extra
+# fields (a note, a hand-set pitch/yaw to remember) are allowed, kept on
+# re-save, and never moved; pump_hwp_deg is the one go_to applies (the pump
+# energy for that sample, Xinxin's per-sample HWP).
+# The ONE place for positions: the agent (save_position tool) and operators
+# (bringup/positions.py: list, where, save, set, check, history) write it
+# through the same code, with safety ranges checked, a .bak copy and
+# ued_setup.history.log. Hand edits are fine; run `positions.py check` after.
+# Run 4's coordinates were on the GUED stage and don't carry over.
 positions:
   yag: null      # sample-chamber YAG screen ("go2YAG"), where the e-beam cross is
   andor: null    # sample card out, cross in free space ("go2Andor"), beam to the far detector
   bi: null       # Bi sample ("go2Bi")
   si: null       # Si sample
 
-# Sample chamber camera (UED:GIGE:03) plus the chamber light, the three
+# Sample chamber camera (UED:GIGE:02) plus the chamber light, the three
 # states of Fuhao's procedure. ebeam and laser may need retuning for other
 # pulse charges and pump wavelengths. Procedure (4) step 4 says gain 30 for
 # the e-beam view; the state list says 10.
@@ -27,6 +36,17 @@ camera_views:
   full_view: {exposure: 0.1, gain: 0, light: 1}     # state 1: sample chamber full view
   ebeam: {exposure: 1.0, gain: 10, light: 0}        # state 2: e-beam on the YAG
   laser: {exposure: 0.5, gain: 5, light: 0}         # state 3: pump laser on the YAG
+  # Xinxin's Run 6 presets for the same camera (no light change):
+  high: {exposure: 1.5, gain: 18}
+  mid: {exposure: 0.2, gain: 5}                     # set before every stage move
+  low: {exposure: 0.02, gain: 0}
+
+# Stage moves (go_to), as in Xinxin's go2... functions: pump and gun UV
+# shutters closed first, the sample camera to this view, the position's
+# pump_hwp_deg (if it has one) applied, x/y/z moved, then the gun UV
+# reopened if it was open. null skips the camera view.
+motion:
+  camera_view: mid
 
 # Far-detector Andor (UED:ANDOR:CAM:03): stopped, set, started again.
 andor:
@@ -37,8 +57,10 @@ andor:
 
 # Pump laser. HWP angles come from the laser team before the experiment.
 pump:
-  hwp_min_energy_deg: null    # minimal energy, for overlap on the YAG
-  hwp_pump_probe_deg: null    # ~2 uJ, for time zero on Bi
+  # Run 6 values from Xinxin's code (2026-06): hwpAngle_YAG and hwpAngle_Bi.
+  # The pump energy drifts run to run: confirm with the laser team.
+  hwp_min_energy_deg: 12.0    # minimal energy, for overlap on the YAG
+  hwp_pump_probe_deg: 16.245  # ~2 uJ, for time zero on Bi
   power_meter_out_mm: 0.0
   power_meter_in_mm: 40.0
 
@@ -48,6 +70,17 @@ collimator:
   scan_half_width_mm: 0.5     # tuning range around nominal
 
 gun:
+  # Stage-1 ramp from AREQ 0.05 to the target. 600 steps x 2 s = 20 min,
+  # half the step size of the original 300 x 2 s (10 min) ramp_rf.py, for
+  # the reduced gun cooling-water flow (2026-10-28). Smaller steps first,
+  # longer dwell second: the temperature check runs before every step.
+  ramp_n_steps: 600
+  ramp_dwell_s: 2.0
+  # Gun body temperature window: the ramp holds before a step while the
+  # temperature is outside it, and aborts (AREQ -> 0) after 10 readings in a
+  # row outside. Ceiling lowered from 37 to 36 C for the reduced flow.
+  ramp_temp_min_C: 33.0
+  ramp_temp_max_C: 36.0
   uv_throttle_scan_deg: 51    # higher UV for the emission-phase scan
   uv_throttle_operating_deg: 53
   phase_from_emission_deg: 30
@@ -75,8 +108,12 @@ limits:
   sample_x: [-25.0, 0.0]
   sample_y: [-24.8, 5.0]
   sample_z: [0.05, 24.95]
-  sample_pitch: [-11.5, -9.6]
-  sample_yaw: [-36.0, 0.0]
+  # Sample pitch and yaw: not driven by the tools for now (their channels
+  # are read-only). Kept for when they are: small angles around 0 (up to
+  # ~5 deg, Fuhao 2026-10-28), once the stale IOC soft limits (pitch
+  # -11.5..-9.6, yaw -36..0, read 2026-10-21) are reset.
+  sample_pitch: [-5.0, 5.0]
+  sample_yaw: [-5.0, 5.0]
   collimator: [0.0, 96.0]
   delay: [0.0, 300.0]
   pump_hwp: [0.0, 180.0]          # placeholder
