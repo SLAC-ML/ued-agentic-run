@@ -30,6 +30,10 @@ from fastmcp import FastMCP
 from . import stages
 from .channels import CHANNELS
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(
+    __file__))))
+import pv_access  # noqa: E402  (bringup/pv_access.py)
+
 auto = stages.auto
 BACKEND = os.environ.get('UED_TUNING_BACKEND', 'sim')
 _machine = None
@@ -112,7 +116,8 @@ async def ued_tuning_info() -> str:
     return json.dumps({'backend': BACKEND, 'stages': list(stages.STAGES),
                        'setup_file': str(auto.setup_path()),
                        'setup_missing': auto.missing(setup),
-                       'setup_problems': auto.validate(setup)})
+                       'setup_problems': auto.validate(setup),
+                       'pv_access': pv_access.describe()})
 
 
 @mcp.tool()
@@ -124,8 +129,9 @@ async def machine_channels(group: str = '') -> str:
             diagnostics, sample, pump_probe, camera, correctors.
     """
     rows = [{'name': c.name, 'group': c.group, 'units': c.units,
-             'writable': c.writable, 'pv': c.pv, 'status': c.status,
-             'pv_units': c.pv_units, 'desc': c.desc}
+             'writable': c.writable, 'pv': c.pv,
+             'wire_pv': pv_access.wire_name(c.pv) if c.pv else None,
+             'status': c.status, 'pv_units': c.pv_units, 'desc': c.desc}
             for c in CHANNELS.values() if not group or c.group == group]
     return json.dumps(rows)
 
@@ -163,13 +169,24 @@ async def check_beam_prerequisites() -> str:
     entries still missing. Relay every warning to the operator."""
     def fn(m, setup):
         r = auto.readiness(m, setup)
-        ok = r['beam_allowed']
+        ok, vals = r['beam_allowed'], r['gate_valves']
+
+        def read(n):
+            try:
+                return m.get(n)
+            except Exception as exc:
+                return {'error': f'{type(exc).__name__}: {exc}'}
         return {'stage': 'beam prerequisites', 'ok': True, 'accepted': ok,
                 'reason': 'all gate valves OPEN' if ok else
-                'gate valves not all OPEN',
-                **r, 'collimator_mm': m.get('collimator'),
+                ('gate valve states unreadable (accelerator-side PVs)'
+                 if all(v == 'UNREADABLE' for v in vals.values())
+                 else 'gate valves not all OPEN'),
+                **r, 'collimator_mm': read('collimator'),
+                'diag_screen_state': read('diag_screen_state'),
+                'diag_screen_interlock': read('diag_screen_interlock'),
                 'setup_missing': auto.missing(setup),
-                'setup_problems': auto.validate(setup)}
+                'setup_problems': auto.validate(setup),
+                'pv_access': pv_access.describe()}
     return _call('beam prerequisites', fn)
 
 
@@ -300,7 +317,10 @@ async def schottky_scan(coarse_step_deg: float = 5.0,
                         fine_step_deg: float = 0.5,
                         phase_offset_deg: float | None = None,
                         throttle_deg: float | None = None,
-                        diag_screen_by_operator: bool = False) -> str:
+                        diag_screen_by_operator: bool = False,
+                        method: str = 'grid',
+                        onset_guess_deg: float | None = None,
+                        bsa_max_width_deg: float = 4.0) -> str:
     """Stage 2: diagnostic screen in (collimator at zero), e-beam check on
     its camera with the gun UV toggled, then the emission-phase scan on the
     scope with the UV throttle at ~51: PREQ = emission + 30 deg. Saves
@@ -309,11 +329,23 @@ async def schottky_scan(coarse_step_deg: float = 5.0,
     Args:
         diag_screen_by_operator: the diagnostic screen has no PV; set true
             once an operator has inserted it.
+        method: 'grid' (coarse scan over -180..180, then a fine scan at
+            fine_step_deg around the edge) or 'bsa' (Sam Klein's amortized
+            T0 posterior: four 10-point scans in a 70 deg window, each
+            placed by the posterior so far; the reply's `bsa` holds the
+            posterior after every scan).
+        onset_guess_deg: with method='bsa', the PREQ where emission is
+            expected to start (e.g. the last run's emission phase, within
+            ~10 deg); skips the coarse scan.
+        bsa_max_width_deg: with method='bsa', stop for an operator if the
+            emission phase's 98 % interval is wider than this.
     """
     return _call('schottky_scan', stages.schottky_scan,
                  coarse_step=coarse_step_deg, fine_step=fine_step_deg,
                  phase_offset=phase_offset_deg, throttle=throttle_deg,
-                 diag_screen_by_operator=diag_screen_by_operator)
+                 diag_screen_by_operator=diag_screen_by_operator,
+                 method=method, onset_guess=onset_guess_deg,
+                 bsa_max_width=bsa_max_width_deg)
 
 
 @mcp.tool()

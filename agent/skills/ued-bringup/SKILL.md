@@ -25,6 +25,13 @@ operator.
      it read before stopping, and don't retry. Never try to write a PV another
      way.
    - `sim` is the virtual machine, for rehearsal.
+   - `pv_access` says how PVs are reached. From S3DF (`accel_pv_prefix`
+     set), the accelerator-side PVs (gun RF, magnets, correctors, gate
+     valves, diagnostic screen, scope) come through the EPICS gateway under
+     a prefix. On 2026-10-29 the gateway served some of them only as
+     never-processed placeholders (0.0, timestamp 1990-01-01). The tools
+     report those as unavailable ("a gateway placeholder"), never as values.
+     Say so; don't present a 0 from them as the machine's state.
 2. For a beam stage (2-8), call `check_beam_prerequisites`. All four gate
    valves (`gv240`, `gv272`, `gv280`, `gv295`) must read OPEN. If one doesn't,
    stop and tell the operator which ones; the stage tools stop there anyway.
@@ -87,6 +94,17 @@ Notes per stage:
   the dry run; Fuhao's procedure text names CH0). If no pulse shows on a beam
   the screen camera sees, ask which channel is right. The scope's V/div PV
   reads UDF: the charge numbers trust it.
+- **2, BSA option.** `schottky_scan(method='bsa')` replaces the fine scan
+  with Sam Klein's amortized T0 posterior: four 10-point scans in a 70 deg
+  window, each placed by the posterior so far. `onset_guess_deg` (the last
+  known emission phase, within ~10 deg) skips the coarse scan too, so the
+  stage takes 40 points instead of ~90. The model's T0 is where the charge
+  starts to rise, about 1-2 deg before the grid method's threshold crossing
+  (`bsa.check.threshold_crossing_deg` gives both). The stage stops for an
+  operator, with PREQ put back, if the 98 % interval is wider than
+  `bsa_max_width_deg` or the measured charge disagrees with the onset;
+  then rerun with the default `method='grid'`. It hasn't been tried on a
+  real UED scan yet: use `grid` unless the operator asks for BSA.
 - **3.** After the fine tune, walk the operator through `handoff`: teach the
   loop at 10 fC ("set low charge") and 30 fC ("set high charge"), then
   "start feedback". From then on the loop owns the UV throttle: don't run

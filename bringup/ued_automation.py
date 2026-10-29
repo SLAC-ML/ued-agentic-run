@@ -271,15 +271,22 @@ def readiness(m, setup) -> dict:
             out[gv] = m.get(gv)
         except Exception as exc:          # monitored only: report, go on
             out[gv] = f'unreadable ({exc})'
-    for sh in ('gun_uv_shutter', 'pump_shutter'):
-        out[sh] = 'open' if m.get(sh) else 'closed'
-    pm = float(m.get('pump_power_meter'))
-    pm_in = float((setup.get('pump') or {}).get('power_meter_in_mm', 40.0))
-    out['pump_power_meter_mm'] = pm
-    if pm > 0.85 * pm_in:                 # Xinxin: > 35 with in = 40
-        warn.append(f'pump power meter is IN ({pm:g} mm): it blocks the '
-                    'pump; take it out before pump-probe')
     nc = []
+    for sh in ('gun_uv_shutter', 'pump_shutter'):
+        try:
+            out[sh] = 'open' if m.get(sh) else 'closed'
+        except Exception as exc:          # report, don't block
+            out[sh] = 'UNREADABLE'
+            nc.append(f'{sh} unreadable ({exc})')
+    pm_in = float((setup.get('pump') or {}).get('power_meter_in_mm', 40.0))
+    try:
+        pm = float(m.get('pump_power_meter'))
+        out['pump_power_meter_mm'] = pm
+        if pm > 0.85 * pm_in:             # Xinxin: > 35 with in = 40
+            warn.append(f'pump power meter is IN ({pm:g} mm): it blocks the '
+                        'pump; take it out before pump-probe')
+    except Exception as exc:
+        nc.append(f'pump power meter unreadable ({exc})')
     pos_out = (setup.get('pump') or {}).get('outcoupling_out_mm')
     pos_in = (setup.get('pump') or {}).get('outcoupling_in_mm')
     try:
@@ -299,7 +306,15 @@ def readiness(m, setup) -> dict:
 
 
 def gate_valves(m) -> dict:
-    return {gv: m.get(gv) for gv in GATE_VALVES}
+    """Each gate valve's state; UNREADABLE when its PV doesn't answer (from
+    S3DF the accelerator-side PVs need the gateway prefix)."""
+    out = {}
+    for gv in GATE_VALVES:
+        try:
+            out[gv] = m.get(gv)
+        except Exception:
+            out[gv] = 'UNREADABLE'
+    return out
 
 
 def beam_allowed(m):

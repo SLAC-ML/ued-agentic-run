@@ -5,9 +5,10 @@ This repo has two parts: running UED beamline simulations with GPT (General Part
 ## What's in here
 
 - `s3df/`: the scripts we use on S3DF. They set up the environment, run GPT (by hand or as a Slurm job), and sanity-check the output. [s3df/README.md](s3df/README.md) has the details.
-- `bringup/`: tools for the real beamline, starting from Fuhao's 2023 run-4 automation scripts. So far there's a map from the old PVs to today's PVs, a read-only snapshot of the beamline state, the gun ramp-up procedure, the updated automation script with its editable setup file (positions, camera views, safety ranges), and `ued_tuning`, an MCP server with a tool for each of the eight bring-up stages. On the real machine those tools only read for now. [bringup/README.md](bringup/README.md) has the details and the open questions.
+- `bringup/`: tools for the real beamline, starting from Fuhao's 2023 run-4 automation scripts. So far there's a map from the old PVs to today's PVs, a read-only snapshot of the beamline state, the gun ramp-up procedure, the updated automation script with its editable setup file (positions, camera views, safety ranges), `ued_tuning`, an MCP server with a tool for each of the eight bring-up stages, and `ued_badger`, an agent-friendly Badger that drafts, checks and (on the simulator) runs optimization routines. On the real machine those tools only read for now. From S3DF they reach the PVs through the EPICS gateway, adding the accelerator-side prefix themselves (`pv_access.py`). [bringup/README.md](bringup/README.md) has the details and the open questions.
 - `sim/`: GPT simulations of the bring-up stages. There's a beamline deck with all the steering kickers, a Python runner for scans, one script per stage, and a virtual UED that the `ued_tuning` tools can be rehearsed against. [sim/README.md](sim/README.md) has the details.
-- `agent/`: the source of the Osprey agent that runs on `ued-daq`. It holds the profile, the read-only beamline and tuning tools, the UED skills, the write guard and the launcher. Keys and build output stay out of git. [agent/deploy/ued/README.md](agent/deploy/ued/README.md) has the details.
+- `agent/`: the source of the Osprey agent, which runs on S3DF since 2026-10-29 (host profile `s3df`; `ued-daq` before). It holds the profile, the read-only beamline, tuning and Badger tools, the UED skills, the write guard and the launcher. Keys and build output stay out of git. [agent/deploy/ued/README.md](agent/deploy/ued/README.md) has the details.
+- `boed/`: amortized T0 inference for the Schottky (gun-phase) scan, plus two ways of choosing where to measure next from the T0 posterior: posterior sampling, and narrowing BSA scans. It covers training, evaluation on the simulator, and replaying the protocol on recorded scans. [boed/README.md](boed/README.md) has the details.
 - `assets/`: the raw files from collaborators: the GPT Linux build and license, the `UED_May2025` deck and field maps, and the analysis notebook. It's big and licensed, so it's not in git. The S3DF folder below has a copy of everything.
 
 ## The S3DF side
@@ -23,6 +24,7 @@ sim/           copy of sim/ from this repo
 UED_May2025/   the deck + field maps, left untouched
 runs/          one folder per run, plus the Slurm logs
 pv_survey/     raw PV survey dumps from ued-daq
+badger/        the agent's Badger routines, runs and archive (ued_badger)
 ```
 
 ## Quick start

@@ -158,6 +158,9 @@ mcp_servers:
       # Kept as a ${VAR:-NO} reference, not a bare "NO": the rendered config.yml
       # round-trips through YAML 1.1, where NO loads back as the boolean false.
       EPICS_CA_AUTO_ADDR_LIST: "${EPICS_CA_AUTO_ADDR_LIST:-NO}"
+      # From S3DF the gateway serves accelerator PVs only under a prefix
+      # (bringup/pv_access.py); empty means names as-is (ued-daq).
+      UED_ACCEL_PV_PREFIX: "${UED_ACCEL_PV_PREFIX:-}"
     # Tool names under permissions are bare — `allow` runs them unprompted, `ask`
     # prompts the operator on every call.
     permissions:
@@ -175,6 +178,7 @@ mcp_servers:
       UED_BRINGUP_DIR: "${UED_BRINGUP_DIR:-/sdf/group/mli/zhezhang/ued/agentic/bringup}"
       EPICS_CA_ADDR_LIST: "${EPICS_CA_ADDR_LIST:-172.21.36.255:5064 172.27.99.255:5058}"
       EPICS_CA_AUTO_ADDR_LIST: "${EPICS_CA_AUTO_ADDR_LIST:-NO}"
+      UED_ACCEL_PV_PREFIX: "${UED_ACCEL_PV_PREFIX:-}"
     # Read-only tools run unprompted. Every tool that writes (the stages and
     # the automation actions) asks first: none can write on this backend,
     # but an operator should see each one being tried on the real machine.
@@ -186,8 +190,33 @@ mcp_servers:
             align_collimator, overlap_pump_laser, tune_sample_position,
             find_time_zero, check_overlap, go_to_position, save_position,
             set_camera_view, close_pump_shutter]
-  # Skills for this server live in skills/ beside this file: ued-bringup (the
-  # campaign), ued-positions (setup file), ued-beam-optimization (Badger).
+  # Badger optimization routines for the co-tuning after the collimator
+  # (procedure 5): drafted and validated in Badger, run headless with a
+  # budget on the simulator only. Routines for the real machine are checked
+  # against live values, read-only; an operator runs them in Badger. The
+  # server never imports Badger: it runs UED_BADGER_PYTHON (the AgenticOpt
+  # venv with the Badger fork) as subprocesses. Code: bringup/ued_badger.
+  # DEVIATION: ued_badger is the UED agent-friendly Badger server.
+  ued_badger:
+    command: "{current_python_env}"
+    args: [-m, ued_badger_mcp]
+    env:
+      PYTHONPATH: "{project_root}/build/_mcp_servers"
+      UED_BRINGUP_DIR: "${UED_BRINGUP_DIR:-/sdf/group/mli/zhezhang/ued/agentic/bringup}"
+      UED_BADGER_PYTHON: "${UED_BADGER_PYTHON:-/sdf/group/mli/zhezhang/AgenticOpt/.venv/bin/python}"
+      UED_BADGER_ROOT: "${UED_BADGER_ROOT:-/sdf/group/mli/zhezhang/ued/agentic/badger}"
+      EPICS_CA_ADDR_LIST: "${EPICS_CA_ADDR_LIST:-172.21.36.255:5064 172.27.99.255:5058}"
+      EPICS_CA_AUTO_ADDR_LIST: "${EPICS_CA_AUTO_ADDR_LIST:-NO}"
+      UED_ACCEL_PV_PREFIX: "${UED_ACCEL_PV_PREFIX:-}"
+    # Drafting reads the machine and writes a routine file; stopping is
+    # always safe. Starting a run (simulator) and resetting the simulator ask.
+    permissions:
+      allow: [badger_info, draft_routine, list_routines, list_runs,
+              poll_run, run_result, stop_run]
+      ask: [run_routine, reset_sim]
+  # Skills for these servers live in skills/ beside this file: ued-bringup
+  # (the campaign), ued-positions (setup file), ued-beam-optimization and
+  # ued-badger (Badger routines).
   # Delete a block and its mcp_servers/<package>/ together: one without
   # the other costs every session a 20 s wait for a server that cannot start.
   # Editing either is a source change, not a build tweak: rebuild afterwards,
@@ -223,17 +252,28 @@ config:
   facility.name: UED
   facility.prefix: ued
   system.timezone: America/Los_Angeles
-  # The SLAC AI gateway (LiteLLM). ued-daq reaches it directly, no proxy
-  # (profiles/ued-daq.yml keeps it out of HTTPS_PROXY via NO_PROXY). Model ids
-  # as the gateway serves them, copied from the LCLS deployment (verified there
-  # 2026-09-24 against /v1/models).
+  # The SLAC AI gateway (LiteLLM). ued-daq and S3DF reach it directly, no
+  # proxy (the host profiles keep it in NO_PROXY). Model ids as the gateway
+  # serves them, checked against /v1/models and /model/info on 2026-10-28:
+  # the opus tier is Opus 5.5 since 2026-10-29 (was Opus 5).
   # DEVIATION: the slac provider's gateway and model map.
   api.providers.slac.api_key: ${SLAC_API_KEY}
   api.providers.slac.base_url: https://ai-api.slac.stanford.edu/v1
   api.providers.slac.models.haiku: us.anthropic.claude-haiku-4-5-20251001-v1:0
   api.providers.slac.models.sonnet: us.anthropic.claude-sonnet-5
-  api.providers.slac.models.opus: us.anthropic.claude-opus-5
+  api.providers.slac.models.opus: us.anthropic.claude-opus-5-5
   api.providers.slac.models.fable: us.anthropic.claude-fable-5-1
+  # The same models for Claude Code, with their real context window. Claude
+  # Code assumes 200k for a model name it doesn't recognise (the gateway's
+  # us.anthropic.* names); a trailing [1m] tells it the model takes 1M, and
+  # Claude Code strips the suffix before each request. The gateway reports
+  # 1M for Opus 5.5, Sonnet 5 and Fable 5.1, and 200k for Haiku 4.5, which
+  # keeps its plain name. Only Claude Code reads claude_code.models: Osprey's
+  # own model calls use the provider map above.
+  # DEVIATION: Claude Code tier ids with the 1M window.
+  claude_code.models.sonnet: "us.anthropic.claude-sonnet-5[1m]"
+  claude_code.models.opus: "us.anthropic.claude-opus-5-5[1m]"
+  claude_code.models.fable: "us.anthropic.claude-fable-5-1[1m]"
   # UED rule: never write PVs on ued-daq. Five layers, because a Bash
   # permission pattern alone is not a security boundary (it matches the
   # command text, not what runs). Layer 5 is OSPREY_EXECUTION_MODE=readonly,

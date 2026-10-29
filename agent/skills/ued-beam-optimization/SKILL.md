@@ -4,9 +4,10 @@ description: >
   Plan the UED beam optimization that follows the collimator alignment:
   minimize the beam spot size on the Andor with Sol1, Sol2 and XC/YC00-02
   (XC/YC04 to keep it centred) while the transmitted charge stays above a
-  level, as an Xopt/Badger routine for an operator to run. Use when the
-  operator asks to optimize the focus or spot size on the Andor, to set up a
-  Badger routine, or what the steering magnets are for.
+  level, as a Badger routine (rehearsed on the simulator, run on the real
+  machine by an operator). Use when the operator asks to optimize the focus
+  or spot size on the Andor, to set up a Badger routine, or what the
+  steering magnets are for.
 summary: Badger/Xopt plan for the post-collimator beam optimization
 ---
 
@@ -26,10 +27,15 @@ the agent prepares the plan and never writes the magnets itself.
    offset from the Andor centre. Report them.
 3. `plan_beam_optimization` (read-only): a VOCS with variables, objective and
    constraints, ranges built from the current values and the safety ranges.
-   Present it to the operator as a Badger routine.
-4. The operator runs it in Badger. Afterwards, check that the e-beam is still
-   on the sample-YAG cross (`beam_on_screens`, or `check_overlap` if the laser
-   overlap was already done) and near the Andor centre.
+4. Turn it into a Badger routine with the `ued_badger` tools (see the
+   ued-badger skill): rehearse it on the simulator (`draft_routine` with
+   `environment='ued_sim'`, then `run_routine`) to check the VOCS and the
+   generator, then draft it for the real machine (`environment='ued'`),
+   which checks it against the live values without writing anything.
+5. The operator runs the real-machine routine in Badger. Afterwards, check
+   that the e-beam is still on the sample-YAG cross (`beam_on_screens`, or
+   `check_overlap` if the laser overlap was already done) and near the Andor
+   centre.
 
 ## What each magnet is for
 

@@ -1,0 +1,58 @@
+# profiles/s3df.yml — host overlay for running the UED agent on S3DF (iana).
+#
+# The experiment moves from ued-daq to S3DF (2026-10-28, for security): the
+# agent reaches the UED PVs through the EPICS gateway 172.24.3.10:5110
+# instead of direct Channel Access on the hutch network. Build and launch on
+# iana; nothing else changes (same build, same /sdf paths).
+#
+# Gateway facts (checked 2026-10-28 from iana):
+#   hutch PVs (UED:*)       answer under their own names, Andor images too
+#   accelerator PVs (AS01)  served only under a prefix, e.g.
+#                           UED:USER:SIOC:AS01:KY03:0:AREQ; on 2026-10-28
+#                           neither the raw nor the prefixed names answered
+#                           yet (gun RF, solenoids, correctors, gate valves,
+#                           diagnostic screen): ask the controls group
+# The MCP servers add the prefix themselves (bringup/pv_access.py) to every
+# PV that doesn't start with UED:, so the maps keep the PVs' own names.
+#
+# Network facts (checked 2026-10-28 from iana):
+#   ai-api.slac.stanford.edu   reachable directly
+#   PyPI and the internet      reachable directly; no proxy needed
+#   psproxy:3128               NOT reachable (PCDS network only)
+#
+# Select on that host with:  echo OSPREY_PROFILE_VARIANT=s3df > .env.variant
+config:
+  # The connector writes `address` verbatim into EPICS_CA_ADDR_LIST. Writes
+  # are refused anyway; the write gateway names the same gateway.
+  control_system.connector.epics.gateways.read_only.address: "172.24.3.10:5110"
+  control_system.connector.epics.gateways.read_only.port: 5110
+  control_system.connector.epics.gateways.read_only.use_name_server: false
+  control_system.connector.epics.gateways.write_access.address: "172.24.3.10:5110"
+  control_system.connector.epics.gateways.write_access.port: 5110
+  control_system.connector.epics.gateways.write_access.use_name_server: false
+  # Presence-only acknowledgement (target_eligibility._acknowledged); say what it is.
+  control_system.target_switch.live_gateway_acknowledged: "UED PVs through the S3DF EPICS gateway 172.24.3.10:5110 (accelerator PVs under the UED:USER: prefix); writes refused by profile"
+  # Read-only, restated here so the host file alone tells the story.
+  control_system.writes_enabled: false
+  control_system.limits_checking.allow_unlisted_channels: false
+# These defaults document the host; osprey does NOT read them at launch.
+# `osprey web`/`chat` load .env.shared + .env, so the same values go into the
+# deployment's .env (mode 600) under the "Declared by this profile" banner.
+# Change both together.
+env:
+  defaults:
+    EPICS_CA_ADDR_LIST: "172.24.3.10:5110"
+    EPICS_CA_AUTO_ADDR_LIST: "NO"
+    # Prefix for accelerator-side PVs through the gateway (bringup/pv_access.py).
+    UED_ACCEL_PV_PREFIX: "UED:USER:"
+    # osprey's deployment-wide read-only run: the writes-check hook refuses every
+    # write call under it, ahead of any config read. Write-safety layer 5.
+    OSPREY_EXECUTION_MODE: readonly
+    NO_PROXY: localhost,127.0.0.1,ai-api.slac.stanford.edu
+    OSPREY_OFFLINE: "1"
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+    DISABLE_AUTOUPDATER: "1"
+    MCP_TIMEOUT: "120000"
+    MCP_CONNECT_TIMEOUT: "120000"
+    MCP_TOOL_TIMEOUT: "120000"
+    UED_BRINGUP_DIR: /sdf/group/mli/zhezhang/ued/agentic/bringup

@@ -38,10 +38,13 @@ of every write with the real PV behind it.
 """
 from __future__ import annotations
 
+import json
 import math
 import os
+import subprocess
 import sys
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 
@@ -56,6 +59,18 @@ PS_PER_MM = 2e-3 / 299792458 * 1e12
 MV_PER_DIV = {'1mV': 1, '2mV': 2, '5mV': 5, '10mV': 10, '20mV': 20,
               '50mV': 50, '100mV': 100, '200mV': 200, '500mV': 500,
               '1V': 1e3, '2V': 2e3, '5V': 5e3, '10V': 1e4}
+# Stage 2's BSA option: Sam Klein's amortized T0 posterior (boed/). It
+# needs torch, which the agent's Python lacks, so each step runs
+# boed/ued_t0.py in UED_BOED_PYTHON (the AgenticOpt venv) on the trained
+# models in UED_BOED_MODEL_DIR (his policy-boed run bsa_full_v2).
+BOED_DIR = Path(os.environ.get(
+    'UED_BOED_DIR', Path(__file__).resolve().parents[2] / 'boed'))
+BOED_PYTHON = os.environ.get(
+    'UED_BOED_PYTHON', '/sdf/group/mli/zhezhang/AgenticOpt/.venv/bin/python')
+BSA_GUESS_SHIFT = 8.0      # deg: window centre above onset_guess (see there)
+BOED_MODELS = os.environ.get(
+    'UED_BOED_MODEL_DIR',
+    '/sdf/group/mli/zhezhang/ued/agentic/boed/models/bsa_full_v2')
 OPERATOR_HINT = {
     'diag_holder': 'the diagnostic screen (YAGS:AS01:270) is moved by an '
                    'operator, not the agent: insert or extract it from the '
@@ -152,10 +167,16 @@ def _precheck(rec, stage, beam=True):
     if beam:
         ok, vals = auto.beam_allowed(rec)
         if not ok:
-            shut = [f'{k} {v}' for k, v in vals.items() if v != 'OPEN']
-            return _result(stage, rec, False, False,
-                           'gate valves not all OPEN (' + ', '.join(shut)
-                           + '): no e-beam can reach the screens',
+            if all(v == 'UNREADABLE' for v in vals.values()):
+                reason = ('gate valve states unreadable from here (their '
+                          'PVs are accelerator-side; from S3DF they need '
+                          'the gateway prefix): the beam path cannot be '
+                          'confirmed')
+            else:
+                shut = [f'{k} {v}' for k, v in vals.items() if v != 'OPEN']
+                reason = ('gate valves not all OPEN (' + ', '.join(shut)
+                          + '): no e-beam can reach the screens')
+            return _result(stage, rec, False, False, reason,
                            needs_operator=True, gate_valves=vals)
     auto.close_pump_shutter(rec)
     return None
@@ -310,7 +331,8 @@ def gun_ramp(m, setup, target=0.53, n_steps=None, dwell_s=None):
 # ---------------------------------------------------------------- stage 2
 def schottky_scan(m, setup, coarse_step=5.0, fine_step=0.5,
                   phase_offset=None, throttle=None, n_avg=3,
-                  threshold_sigma=5.0, diag_screen_by_operator=False):
+                  threshold_sigma=5.0, diag_screen_by_operator=False,
+                  method='grid', onset_guess=None, bsa_max_width=4.0):
     """Diagnostic screen, then the emission-phase scan on the scope.
 
     Screen (procedure 1-4): collimator at zero, diagnostic screen in, its
@@ -319,6 +341,15 @@ def schottky_scan(m, setup, coarse_step=5.0, fine_step=0.5,
     where the scope charge first rises above its detection threshold
     (threshold_sigma x the trace noise), set PREQ = emission + 30 deg.
     Record (6): throttle, phase, diagnostic image and trace.
+
+    method='bsa' replaces the fine scan with Sam Klein's amortized T0
+    posterior (boed/): four 10-point scans in a 70 deg window around the
+    coarse edge (or around onset_guess, which skips the coarse scan), each
+    range set by the posterior after the scans before it. The emission
+    phase is the posterior median; the stage stops for an operator if its
+    98 % interval is wider than bsa_max_width deg, or if the measured
+    charge disagrees with it (_bsa_check). A guess should be within ~10
+    deg of the onset.
     """
     stage = '2 Schottky scan'
     rec = Recorder(m, setup, manual=('diag_holder',)
@@ -349,26 +380,68 @@ def schottky_scan(m, setup, coarse_step=5.0, fine_step=0.5,
         rec.sleep(0.5)
         return scope_charge(rec, setup, n_avg, threshold_sigma)['charge_fC']
 
-    grid = np.arange(-180.0, 180.0, coarse_step)
-    coarse = [(float(p), q_at(p)) for p in grid]
-    run = _longest_run([q >= thr for _, q in coarse])
-    if run is None or run[1] < 3:
-        return _result(stage, rec, True, False,
-                       f'no emission window above {thr:.1f} fC in the coarse '
-                       'scan', needs_operator=True, coarse=coarse,
-                       threshold_fC=thr)
-    edge = coarse[run[0]][0]          # where the emission window opens
-    fine = [(float(_wrap(p)), q_at(_wrap(p))) for p in
-            np.arange(edge - coarse_step, edge + coarse_step + 1e-9,
-                      fine_step)]
-    i = next((i for i, (_, q) in enumerate(fine) if q >= thr), None)
-    if i is None or i == 0:
-        return _result(stage, rec, True, False, 'emission edge lost in the '
-                       'fine scan', needs_operator=True, coarse=coarse,
-                       fine=fine, threshold_fC=thr)
-    (p0, q0), (p1, q1) = fine[i - 1], fine[i]
-    p1u = p0 + fine_step                  # unwrapped neighbour
-    emission = _wrap(p0 + (thr - q0) * (p1u - p0) / (q1 - q0))
+    if method not in ('grid', 'bsa'):
+        raise ValueError(f"method is 'grid' or 'bsa', not {method!r}")
+    coarse, bsa = [], None
+    preq0 = float(rec.get('preq'))    # put back if the scan fails
+    if method == 'bsa' and onset_guess is not None:
+        # The window works when the onset sits at or left of its centre
+        # (simulator, 2026-10-29: centres 0-15 deg above the onset gave the
+        # right phase, 6-12 deg below it a wrong one, refused by the
+        # checks), so centre it 8 deg above the guess: guesses 10 deg below
+        # to 7 deg above the onset then worked, or were refused.
+        edge = _wrap(onset_guess + BSA_GUESS_SHIFT)
+    else:
+        grid = np.arange(-180.0, 180.0, coarse_step)
+        coarse = [(float(p), q_at(p)) for p in grid]
+        run = _longest_run([q >= thr for _, q in coarse])
+        if run is None or run[1] < 3:
+            return _result(stage, rec, True, False,
+                           f'no emission window above {thr:.1f} fC in the '
+                           'coarse scan', needs_operator=True, coarse=coarse,
+                           threshold_fC=thr)
+        edge = coarse[run[0]][0]      # where the emission window opens
+    if method == 'bsa':
+        try:
+            bsa = _bsa_scan(q_at, edge)
+        except Exception as exc:      # helper or models unavailable
+            rec.put('preq', preq0)
+            return _result(stage, rec, True, False,
+                           f'BSA inference failed ({exc}); rerun with '
+                           "method='grid'", needs_operator=True,
+                           coarse=coarse, threshold_fC=thr)
+        fine = bsa['points']
+        t0 = bsa['t0']
+        emission = _wrap(edge + t0['median'])
+        bsa['check'] = _bsa_check(fine, emission, thr)
+        problem = None
+        if t0['q99'] - t0['q01'] > bsa_max_width:
+            problem = (f"emission phase uncertain: 98 % interval "
+                       f"{t0['q99'] - t0['q01']:.1f} deg wide (limit "
+                       f"{bsa_max_width:g})")
+        elif not bsa['check']['ok']:
+            problem = ('the BSA emission phase disagrees with the measured '
+                       'charge: ' + bsa['check']['why'])
+        if problem:
+            rec.put('preq', preq0)
+            return _result(stage, rec, True, False,
+                           problem + "; check the scope signal or rerun "
+                           "with method='grid'", needs_operator=True,
+                           coarse=coarse, bsa=bsa, threshold_fC=thr,
+                           emission_phase_deg=emission)
+    else:
+        fine = [(float(_wrap(p)), q_at(_wrap(p))) for p in
+                np.arange(edge - coarse_step, edge + coarse_step + 1e-9,
+                          fine_step)]
+        i = next((i for i, (_, q) in enumerate(fine) if q >= thr), None)
+        if i is None or i == 0:
+            rec.put('preq', preq0)
+            return _result(stage, rec, True, False, 'emission edge lost in '
+                           'the fine scan', needs_operator=True,
+                           coarse=coarse, fine=fine, threshold_fC=thr)
+        (p0, q0), (p1, q1) = fine[i - 1], fine[i]
+        p1u = p0 + fine_step              # unwrapped neighbour
+        emission = _wrap(p0 + (thr - q0) * (p1u - p0) / (q1 - q0))
     op = _wrap(emission + offset)
     rec.put('preq', op)
     rec.sleep(1)
@@ -377,7 +450,8 @@ def schottky_scan(m, setup, coarse_step=5.0, fine_step=0.5,
     record = auto.save_record('schottky_scan', {
         'throttle_deg': throttle, 'preq_deg': op, 'emission_deg': emission,
         'phase_offset_deg': offset, 'charge_fC': at_op['charge_fC'],
-        'threshold_fC': thr, 'coarse': coarse, 'fine': fine},
+        'threshold_fC': thr, 'method': method, 'coarse': coarse,
+        'fine': fine, 'bsa': bsa},
         arrays={'scope_trace': at_op['trace'],
                 'diag_image': rec.image('cam_diag_yag')})
     return _result(stage, rec, True, accepted,
@@ -390,7 +464,77 @@ def schottky_scan(m, setup, coarse_step=5.0, fine_step=0.5,
                    charge_at_operating_fC=at_op['charge_fC'],
                    scope={k: v for k, v in at_op.items() if k != 'trace'},
                    screen={k: screen[k] for k in ('seen', 'difference_total')},
-                   coarse=coarse, fine=fine, record=record)
+                   method=method, coarse=coarse, fine=fine,
+                   bsa=bsa and {k: bsa[k] for k in ('t0', 'check', 'scans',
+                                                     'window_deg')},
+                   record=record)
+
+
+def _bsa_step(x, q, scans_done, right_bound):
+    """One call of boed/ued_t0.py (see there): the T0 posterior after
+    `scans_done` scans and the next scan's range."""
+    req = {'model_dir': BOED_MODELS, 'x_deg': x, 'q': q,
+           'scans_done': scans_done, 'right_bound': right_bound}
+    p = subprocess.run([BOED_PYTHON, 'ued_t0.py'], input=json.dumps(req),
+                       capture_output=True, text=True, cwd=BOED_DIR,
+                       timeout=300)
+    if p.returncode:
+        raise RuntimeError(p.stderr.strip().splitlines()[-1]
+                           if p.stderr.strip() else f'exit {p.returncode}')
+    return json.loads(p.stdout)
+
+
+def _bsa_check(points, emission, thr, margin=4.0, span=12.0,
+               min_frac=0.8):
+    """Does the measured charge agree with the BSA onset? Points 4-12 deg
+    below it must be under the detection threshold and points 4-12 deg
+    above it over it (the model's T0 is where the rise starts, so it sits
+    a little below the threshold crossing). Also the threshold crossing
+    itself, interpolated from the points, for comparison with the grid
+    method."""
+    rel = [(_wrap(p - emission), q) for p, q in points]
+    below = [q < thr for d, q in rel if -span <= d <= -margin]
+    above = [q >= thr for d, q in rel if margin <= d <= span]
+    fb = sum(below) / len(below) if below else None
+    fa = sum(above) / len(above) if above else None
+    why = []
+    if fb is not None and fb < min_frac:
+        why.append(f'{1 - fb:.0%} of the points 4-12 deg below it already '
+                   'carry charge')
+    if fa is not None and fa < min_frac:
+        why.append(f'{1 - fa:.0%} of the points 4-12 deg above it carry '
+                   'no charge')
+    if fb is None and fa is None:
+        why.append('no measured points 4-12 deg either side of it')
+    srt = sorted(rel)
+    cross = next((_wrap(emission + d0 + (thr - q0) * (d1 - d0) / (q1 - q0))
+                  for (d0, q0), (d1, q1) in zip(srt, srt[1:])
+                  if q0 < thr <= q1 and d1 > d0), None)
+    return {'ok': not why, 'why': '; '.join(why),
+            'fraction_below_dark': fb, 'fraction_above_lit': fa,
+            'threshold_crossing_deg': cross}
+
+
+def _bsa_scan(q_at, centre):
+    """The BSA protocol around `centre` (PREQ of the coarse edge): the
+    model's frame is x = PREQ - centre, charge rising with x past T0."""
+    x, q, scans = [], [], []
+    reply = _bsa_step(x, q, 0, None)
+    while reply['next']:
+        nxt = reply['next']
+        for xi in nxt['points']:
+            x.append(float(xi))
+            q.append(float(q_at(_wrap(centre + xi))))
+        reply = _bsa_step(x, q, nxt['scan'], nxt['right_bound'])
+        scans.append({'scan': nxt['scan'],
+                      'preq_range_deg': [_wrap(centre + nxt['a']),
+                                         _wrap(centre + nxt['b'])],
+                      't0_after_deg': {k: round(v, 3) for k, v in
+                                       reply['t0'].items()}})
+    lo, hi = reply['frame_deg']
+    return {'t0': reply['t0'], 'scans': scans,
+            'window_deg': [_wrap(centre + lo), _wrap(centre + hi)],
+            'points': [(_wrap(centre + xi), qi) for xi, qi in zip(x, q)]}
 
 
 def _wrap(deg):

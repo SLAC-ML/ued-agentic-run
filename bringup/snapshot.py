@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from epics import caget_many  # noqa: E402  (read-only: no caput imported)
 
+from pv_access import never_processed, prefixed, wire_name  # noqa: E402
 from ued_pvs import CHANNELS  # noqa: E402
 
 TIMEOUT = 2.0
@@ -37,10 +38,21 @@ def _read(pvs):
     enums = [pv for pv in pvs if pv.endswith(ENUM_SUFFIXES)]
     plain = [pv for pv in pvs if pv not in enums]
     with contextlib.redirect_stdout(sys.stderr):
-        vals = dict(zip(plain, caget_many(plain, timeout=TIMEOUT)))
+        vals = dict(zip(plain, caget_many([wire_name(p) for p in plain],
+                                          timeout=TIMEOUT)))
         if enums:
-            vals.update(zip(enums, caget_many(enums, as_string=True,
+            vals.update(zip(enums, caget_many([wire_name(p) for p in enums],
+                                              as_string=True,
                                               timeout=TIMEOUT)))
+        # a prefixed name the gateway serves but nothing ever wrote is a
+        # placeholder, not the machine's value: read it as not connected
+        from epics import get_pv
+        for pv in pvs:
+            if vals.get(pv) is not None and prefixed(pv):
+                p = get_pv(wire_name(pv), form='time')
+                p.get(timeout=TIMEOUT)
+                if never_processed(p.timestamp):
+                    vals[pv] = None
     return vals
 
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  launch_ued.sh — run the UED OSPREY assistant on ued-daq, in place from S3DF.
+#  launch_ued.sh — run the UED OSPREY assistant on ued-daq or on S3DF (iana),
+#  in place from S3DF.
 #
 #      launch_ued.sh                     # osprey web  (127.0.0.1:10100 by default)
 #      launch_ued.sh chat --print ping   # one round trip through the SLAC gateway
@@ -33,10 +34,14 @@ cd "$ROOT"
 if ! grep -q '^SLAC_API_KEY=..*' .env 2>/dev/null; then
   echo "SLAC_API_KEY is missing or blank in $ROOT/.env — fill it (mode 600) first" >&2; exit 1
 fi
-if [[ "$(cat .env.variant 2>/dev/null)" != "OSPREY_PROFILE_VARIANT=ued-daq" ]]; then
-  echo "warning: .env.variant does not select ued-daq; this build may not carry the UED host settings" >&2
-fi
-[[ "$(hostname -s)" == "ued-daq" ]] || echo "note: running on $(hostname -s), not ued-daq — hutch PVs will not answer here" >&2
+# The host profile must match the host: ued-daq (direct CA on the hutch
+# network) or s3df (the EPICS gateway, since 2026-10-28).
+variant="$(sed -n 's/^OSPREY_PROFILE_VARIANT=//p' .env.variant 2>/dev/null)"
+case "$(hostname -s):$variant" in
+  ued-daq:ued-daq | *:s3df) ;;
+  ued-daq:*) echo "warning: on ued-daq, but .env.variant selects '${variant:-nothing}', not ued-daq" >&2 ;;
+  *) echo "warning: on $(hostname -s), .env.variant selects '${variant:-nothing}': here the UED PVs answer only through the S3DF gateway (variant s3df)" >&2 ;;
+esac
 
 # The Claude Code CLI this build bundles (the one `osprey chat` and the subagents use).
 CLAUDE_BIN="$ROOT/build/.venv/bin/claude"

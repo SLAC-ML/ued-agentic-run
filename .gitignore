@@ -38,3 +38,6 @@ env/
 *.log
 *.out
 *.err
+
+# Amortized-inference runs (simulation caches are hundreds of MB)
+boed/runs/

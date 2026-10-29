@@ -23,6 +23,8 @@ build/.venv/bin/osprey build --skip-deps                                  # afte
 
 `.env.variant` selects `profiles/ued-daq.yml`. `.env` (mode 600) holds `SLAC_API_KEY` and the host settings from that file. Osprey loads `.env` at launch, not the profile's `env.defaults`, so when you change one, change the other.
 
+`.env.variant` picks the host profile: `profiles/ued-daq.yml` (direct Channel Access on the hutch network) or `profiles/s3df.yml` (the S3DF EPICS gateway). Since 2026-10-29 the deployment selects `s3df`: see "Running on S3DF" below.
+
 ## Launch (on ued-daq)
 
 ```bash
@@ -59,9 +61,35 @@ Claude Code ignores the build's `permissions.allow` entries until `build/` is tr
 | `psproxy:3128` | Anything outside SLAC. Claude Code's optional traffic is switched off, so in practice little or nothing |
 | `lcls-prod03:3128` | Not usable: it refuses `ued-daq` with `403` |
 
+## Running on S3DF
+
+Since 2026-10-28 the experiment is meant to run from S3DF, not `ued-daq`. There the PVs come through the EPICS gateway `172.24.3.10:5110`. The accelerator-side PVs (gun RF, magnets, correctors, gate valves, diagnostic screen, scope) are served only under a prefix such as `UED:USER:`. The servers add it themselves when `UED_ACCEL_PV_PREFIX` is set (`bringup/pv_access.py`). On 2026-10-28 the hutch PVs answered from iana but the prefixed accelerator PVs didn't yet. See [bringup/README.md](../../../bringup/README.md#controls-environment-on-s3df).
+
+The deployment was switched on 2026-10-29. The `ued-daq` versions of `.env` and `.env.variant` are kept beside them as `*.bak-20261029-ued-daq`. To switch either way (on iana, in the deployed copy):
+
+1. Back up `.env` and `.env.variant`.
+2. `echo OSPREY_PROFILE_VARIANT=s3df > .env.variant` (or `ued-daq`).
+3. In `.env`, under the "Declared by this profile" banner, match the host profile's `env.defaults`. For S3DF that means `EPICS_CA_ADDR_LIST=172.24.3.10:5110` and `UED_ACCEL_PV_PREFIX=UED:USER:`, and no `HTTPS_PROXY`/`HTTP_PROXY`: `psproxy` isn't reachable from S3DF, and iana reaches the internet directly. Keep mode 600.
+4. `build/.venv/bin/osprey build --skip-deps`.
+
+Launch on iana the same way as on `ued-daq`, and tunnel to iana instead:
+
+```bash
+ssh iana
+/sdf/group/mli/zhezhang/OspreyDeployments/UED/deploy/ued/launch_ued.sh web
+# on the laptop:
+ssh -N -o ControlPath=none -o ExitOnForwardFailure=yes -L 127.0.0.1:10102:127.0.0.1:10100 iana
+```
+
+The `iana` alias is one node, `sdfiana016`; the tunnel has to reach the node the agent runs on. That node is shared, so anyone logged in there can reach its `127.0.0.1:10100`: only the banner's token keeps them out, so don't paste the token URL anywhere.
+
+## Models
+
+The SLAC gateway's tiers (`api.providers.slac.models` in `profile.yml`) are Haiku 4.5, Sonnet 5, Opus 5.5 (since 2026-10-29; Opus 5 before) and Fable 5.1. The gateway reports a 1M-token input window for all of them except Haiku 4.5 (200k). Claude Code doesn't recognise the gateway's `us.anthropic.*` names and assumes 200k for them. So `claude_code.models` gives Claude Code the same names with `[1m]` appended. That suffix sets the 1M window, and Claude Code strips it before each request. Checked on 2026-10-29: an Opus subagent reported `us.anthropic.claude-opus-5-5[1m]` and answered through the gateway. The default model (`model:` in `profile.yml`) is still Haiku.
+
 ## Write safety: five layers
 
-The agent never writes PVs on `ued-daq`, which can reach every hutch IOC with write access.
+The agent never writes PVs, on `ued-daq` (which can reach every hutch IOC with write access) or through the S3DF gateway.
 
 1. `control_system.writes_enabled: false`, and the controls write tool denied.
 2. Deny rules: `Bash(caput *)`, `Bash(pvput *)`, `Bash(*caput*)`, `Bash(*pvput*)`. The default persona also denies `Bash` outright.
@@ -71,7 +99,7 @@ The agent never writes PVs on `ued-daq`, which can reach every hutch IOC with wr
 
 ## Tools
 
-Two MCP servers, both reusing `bringup/` from the ued-agentic-run repo, deployed at `/sdf/group/mli/zhezhang/ued/agentic/bringup`:
+Three MCP servers, all reusing `bringup/` from the ued-agentic-run repo, deployed at `/sdf/group/mli/zhezhang/ued/agentic/bringup`:
 
 - `ued_beamline` (`mcp_servers/ued_beamline`) has two tools: `ued_devices`, the device map, and `ued_snapshot`, a live read with `caget` only.
 - `ued_tuning` (`mcp_servers/ued_tuning_mcp`, a wrapper around `bringup/ued_tuning`) has the bring-up tools:
@@ -80,6 +108,7 @@ Two MCP servers, both reusing `bringup/` from the ued-agentic-run repo, deployed
   - read-only checks and `plan_beam_optimization`.
 
   The wrapper forces the `epics` backend, which reads with `caget` and refuses every write before any EPICS call, so each tool that writes stops at its first write. Read-only tools run unprompted; every tool that writes asks first. The positions, setpoints and safety ranges come from `/sdf/group/mli/zhezhang/ued/agentic/config/ued_setup.yaml`. The simulator backend isn't offered here: rehearsals run on S3DF (`sim/stages/mcp_mockup.py`), not on the DAQ machine.
+- `ued_badger` (`mcp_servers/ued_badger_mcp`, a wrapper around `bringup/ued_badger`) has the Badger routines for the optimization after the collimator. Its tools are `badger_info`, `draft_routine`, `list_routines`, `run_routine`, `poll_run`, `stop_run`, `run_result`, `list_runs` and `reset_sim`. Drafting validates a routine in Badger itself and reads where the machine is now. Runs are headless and budgeted, and only on the simulator (`ued_sim`). Routines for the real machine (`ued`) are checked read-only, and an operator runs them in Badger. The server never imports Badger: it calls the AgenticOpt venv (`UED_BADGER_PYTHON`) as subprocesses. `run_routine` and `reset_sim` ask; the rest run unprompted.
 
 ## Skills
 
@@ -88,5 +117,6 @@ Two MCP servers, both reusing `bringup/` from the ued-agentic-run repo, deployed
 - `ued-bringup`: the campaign, stage by stage, with the rules the tools keep and when to stop for an operator.
 - `ued-positions`: taught positions, camera views and safety ranges in the setup file.
 - `ued-beam-optimization`: the Badger/Xopt plan for the optimization after the collimator.
+- `ued-badger`: drafting, rehearsing and reading back Badger routines with the `ued_badger` tools.
 
-Accelerator PVs (gun RF, magnets, correctors) answer from `ued-daq` with the address list `/cds/group/pcds/setup/ued_setup.sh` sets, `172.21.36.255:5064 172.27.99.255:5058` (since 2026-10-16). The profile gives the agent both entries for reads. The `.env` on S3DF carries the same `EPICS_CA_ADDR_LIST` line, so change it there too, then rebuild and restart the agent.
+On `ued-daq`, the accelerator PVs (gun RF, magnets, correctors) answered with the address list `/cds/group/pcds/setup/ued_setup.sh` sets, `172.21.36.255:5064 172.27.99.255:5058`, from 2026-10-16. By 2026-10-28 the KY01 gun PVs no longer answered there. The `ued-daq` profile gives the agent both entries for reads. The `.env` on S3DF carries the same `EPICS_CA_ADDR_LIST` line, so change it there too, then rebuild and restart the agent.

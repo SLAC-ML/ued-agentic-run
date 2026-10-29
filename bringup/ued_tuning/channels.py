@@ -183,7 +183,8 @@ _LIST = [
         'check with diag_screen_state', None, UNMAPPED),
     _ch('diag_screen_state', 'beamline', '', False,
         'Diagnostic screen state (OPENSOLENOID; open = screen inserted, to '
-        'confirm on the machine)', 'YAGS:AS01:270:OPENSOLENOID', LIKELY,
+        'confirm on the machine). Accelerator-side: from S3DF it needs the '
+        'gateway prefix', 'YAGS:AS01:270:OPENSOLENOID', LIKELY,
         as_string=True),
     _ch('diag_screen_interlock', 'beamline', '', False,
         'Diagnostic screen interlock summary',

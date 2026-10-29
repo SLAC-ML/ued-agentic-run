@@ -11,13 +11,17 @@ PV, not read from areaDetector Stats plugins: on 2026-10-16 the GigE cameras'
 Stats plugins were disabled (reading 0.0, which looks like a real centroid)
 and the Andor's ran on a 163x163 ROI.
 
-Accelerator PVs (gun RF, magnets, correctors) need the CA address list that
-ued_setup.sh sets on ued-daq: 172.21.36.255:5064 172.27.99.255:5058.
+Where the PVs come from is the environment's business: on ued-daq the CA
+address list from ued_setup.sh; on S3DF the gateway 172.24.3.10:5110, which
+serves accelerator-side PVs only under a prefix. Every PV name goes through
+pv_access.wire_name(), which adds UED_ACCEL_PV_PREFIX when it is set.
 """
 from __future__ import annotations
 
 import math
+import os
 import re
+import sys
 import time
 
 import numpy as np
@@ -28,6 +32,10 @@ from .channels import CAMERAS, CHANNELS, STAT_NAMES, from_pv, to_pv
 # (VAL); where the motor actually is, is <PV>.RBV. Reads take the readback,
 # so a taught position and a move check use the real position.
 MOTOR_RE = re.compile(r':(MMN|MMS):|:MCS2?:')
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(
+    __file__))))
+from pv_access import never_processed, wire_name  # noqa: E402
 
 
 class WritesDisabled(RuntimeError):
@@ -90,16 +98,29 @@ class EpicsBackend:
     kind = 'epics'
 
     def __init__(self, timeout=2.0):
-        from epics import caget  # imported here: the sim never needs pyepics
+        # imported here: the sim never needs pyepics
+        from epics import caget, get_pv
         self._caget = caget
+        self._get_pv = get_pv
         self.timeout = timeout
         self._frames = {}     # camera -> (array counter, stats)
 
     def _read(self, pv, as_string=False, timeout=None):
-        value = self._caget(pv, timeout=timeout or self.timeout,
-                            as_string=as_string)
+        wire = wire_name(pv)
+        if wire == pv:
+            value = self._caget(wire, timeout=timeout or self.timeout,
+                                as_string=as_string)
+        else:                     # through the gateway prefix: check it's live
+            p = self._get_pv(wire, form='time')
+            value = p.get(timeout=timeout or self.timeout,
+                          as_string=as_string)
+            if value is not None and never_processed(p.timestamp):
+                raise ChannelUnavailable(
+                    f'{wire} answers but was never processed (UDF, '
+                    'timestamp 1990-01-01): a gateway placeholder, not the '
+                    "machine's value")
         if value is None:
-            raise ChannelUnavailable(f'{pv} did not answer')
+            raise ChannelUnavailable(f'{wire} did not answer')
         return value
 
     def _frame(self, cam):

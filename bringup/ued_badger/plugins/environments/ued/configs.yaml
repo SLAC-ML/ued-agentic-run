@@ -1,0 +1,7 @@
+---
+name: ued
+description: "Real UED through EPICS, read-only: knob writes are refused on this deployment"
+version: "0.1"
+dependencies:
+  - badger-opt
+  - pyepics

@@ -108,13 +108,13 @@ footer { border-top: 1px solid var(--rule); padding-top: 16px; font-size: .875re
 <body>
 <div class="wrap">
   <div class="topbar">
-    <span class="eyebrow">UED bring-up · procedures for review · 2026-10-21</span>
+    <span class="eyebrow">UED bring-up · procedures for review · 2026-10-28</span>
     <button class="theme-btn" id="theme-toggle" type="button">Dark theme</button>
   </div>
 
   <header class="intro">
     <h1>UED bring-up procedures</h1>
-    <p class="lede">Every step the <code>ued_tuning</code> tools take in the eight bring-up stages, with the PVs and values they use, as the code stands on 2026-10-21. They follow the 2026-10-16 dry-run notes for stages 1–3 and Fuhao's procedures for stages 4–8.</p>
+    <p class="lede">Every step the <code>ued_tuning</code> tools take in the eight bring-up stages, with the PVs and values they use, as the code stands on 2026-10-28. They follow the 2026-10-16 dry-run notes for stages 1–3 and Fuhao's procedures for stages 4–8.</p>
     <p>On the real machine the tools are read-only for now, so these are the steps they would take once writes are allowed. Please read for anything wrong, missing or in the wrong order.</p>
     <div class="legend-line"><span class="flag"><b>Check</b></span><span>marks a step where we guessed. Those are the ones to look at first.</span></div>
     <nav class="index" aria-label="Stages">
@@ -147,7 +147,7 @@ footer { border-top: 1px solid var(--rule); padding-top: 16px; font-size: .875re
       <h3>On every write</h3>
       <ul class="plain">
         <li>The value is checked against its safety range in the setup file before it is sent. Out of range, the stage stops and nothing is written.</li>
-        <li>The diagnostic-screen inserter has no PV. Inserting or extracting it is an operator step, and the stage is told when it is done.</li>
+        <li>The diagnostic screen moves by command PVs: <code>YAGS:AS01:270:OPENCMD</code> inserts it and <code>:CLOSECMD</code> extracts it. <code>:OPENSOLENOID</code> reads its state and <code>:INTLKSUM</code> its interlock. Writes are disabled, so moving it is an operator step, and the stage is told when it is done.</li>
       </ul>
     </div>
     <div class="block">
@@ -523,7 +523,7 @@ footer { border-top: 1px solid var(--rule); padding-top: 16px; font-size: .875re
   </section>
 
   <footer>
-    <span>Generated from <code>bringup/ued_tuning/stages.py</code>, <code>bringup/ued_automation.py</code> and <code>bringup/ued_setup.yaml</code> in the ued-agentic-run repo, 2026-10-21.</span>
+    <span>Generated from <code>bringup/ued_tuning/stages.py</code>, <code>bringup/ued_automation.py</code> and <code>bringup/ued_setup.yaml</code> in the ued-agentic-run repo, 2026-10-28.</span>
   </footer>
 </div>
 
