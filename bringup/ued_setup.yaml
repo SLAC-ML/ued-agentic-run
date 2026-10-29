@@ -59,8 +59,9 @@ andor:
 pump:
   # Run 6 values from Xinxin's code (2026-06): hwpAngle_YAG and hwpAngle_Bi.
   # The pump energy drifts run to run: confirm with the laser team.
-  hwp_min_energy_deg: 12.0    # minimal energy, for overlap on the YAG
-  hwp_pump_probe_deg: 16.245  # ~2 uJ, for time zero on Bi
+  # From the 2026-10-28 calibration (bringup/pump_calibration/, throttle 16 deg)
+  hwp_min_energy_deg: 8.0     # near the minimum, for overlap on the YAG
+  hwp_pump_probe_deg: 22.0    # ~2.2 uJ at PM1, 2.3 mJ/cm^2 peak: time zero on Bi
   power_meter_out_mm: 0.0
   power_meter_in_mm: 40.0
   # 1st chamber outcoupling mirror (UED:USR:MMN:04:02): its OUT and IN
