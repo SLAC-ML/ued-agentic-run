@@ -21,7 +21,7 @@ import time
 
 import numpy as np
 
-from .channels import CAMERAS, CHANNELS, STAT_NAMES
+from .channels import CAMERAS, CHANNELS, STAT_NAMES, from_pv, to_pv
 
 
 class WritesDisabled(RuntimeError):
@@ -142,12 +142,15 @@ class EpicsBackend:
         try:
             if cam in CAMERAS and stat in STAT_NAMES:
                 return self._camera_stats(cam)[stat]
-            return self._read(ch.pv, as_string=ch.as_string)
+            return from_pv(name, self._read(ch.pv,
+                                            as_string=ch.as_string))
         except ChannelUnavailable as exc:
             raise ChannelUnavailable(f'{name}: {exc}') from None
 
     def put(self, name, value):
-        raise WritesDisabled(f'refused put {name}={value!r}: this deployment '
+        raw = to_pv(name, value)
+        shown = f'{value!r}' if raw == value else f'{value!r} ({raw!r} on the PV)'
+        raise WritesDisabled(f'refused put {name}={shown}: this deployment '
                              'is read-only on the real machine')
 
     def sleep(self, seconds):

@@ -4,7 +4,7 @@ One vocabulary for every backend. The virtual machine (sim/virtual_ued.py)
 answers every name; the read-only EPICS backend maps a name to its PV, and
 refuses a name whose PV is not known yet. PV names follow Fuhao Ji's run-7
 list (PVnamelist_SUED_agentic.py) and the operator's dry-run notes of
-2026-10-16 (gun RF on KY01, the oscilloscope); every PV was read from
+2026-10-16 (the oscilloscope; gun RF back on KY03/TS8 since 2026-10-28); every PV was read from
 ued-daq on 2026-10-16 or 2026-10-21.
 
 Units are the real machine's wherever they are known (collimator and power
@@ -30,6 +30,29 @@ SIM_ONLY = 'SIM_ONLY'     # no PV: an analysis product on the real machine
 # diag_holder positions (Faraday cup and Diag YAG share one inserter)
 HOLDER_OUT, HOLDER_YAG, HOLDER_FC = 0, 1, 2
 GATE_VALVES = ('gv240', 'gv272', 'gv280', 'gv295')
+# Monitored only, not a gate: the ePix gate valve (Xinxin's Run 6 code)
+# matters for the ePix, not for the Andor path this run.
+MONITOR_VALVES = ('gv320',)
+
+# Shutters are Beckhoff analog outputs (BHC AO1). From Xinxin's Run 6 code:
+# 3 = open, 0 = closed; read as open when > 0. The tools use 1/0 (open/
+# closed); to_pv / from_pv translate at the machine boundary.
+SHUTTERS = ('gun_uv_shutter', 'pump_shutter', 'pump_extra_shutter')
+SHUTTER_OPEN_V, SHUTTER_CLOSED_V = 3.0, 0.0
+
+
+def to_pv(name, value):
+    """The value a write of `value` to channel `name` puts on its PV."""
+    if name in SHUTTERS:
+        return SHUTTER_OPEN_V if value else SHUTTER_CLOSED_V
+    return value
+
+
+def from_pv(name, raw):
+    """The tools' value for a raw PV reading of channel `name`."""
+    if name in SHUTTERS and raw is not None:
+        return 1 if float(raw) > 0 else 0
+    return raw
 
 
 @dataclass(frozen=True)
@@ -51,10 +74,10 @@ def _ch(name, group, units, writable, desc, pv, status, pv_units='',
                    as_string)
 
 
-_KY = 'SIOC:AS01:KY01:0:'     # the TS1 klystron again since 2026-10 (run 4's)
+_KY = 'SIOC:AS01:KY03:0:'     # TS8 klystron (back on it 2026-10-28; TS1/KY01 is offline)
 
 _LIST = [
-    # Gun RF (klystron KY01). On 2026-10-21 AREQ sat at 0.2 with no output.
+    # Gun RF (klystron KY03, TS8).
     _ch('areq', 'gun_rf', '', True, 'Gun amplitude setpoint (0..0.53)',
         _KY + 'AREQ', CONFIRMED, 'unconfirmed (EGU "degrees")'),
     _ch('preq', 'gun_rf', 'deg', True, 'Gun phase setpoint (-180..180)',
@@ -82,17 +105,24 @@ _LIST = [
           f'Gate valve {gv[2:]} (OPEN, CLOSED, MOVING, INCONSISTENT)',
           f'VVPG:AS01:{gv[2:]}:POSITION', CONFIRMED, as_string=True)
       for gv in GATE_VALVES],
+    *[_ch(gv, 'vacuum', '', False,
+          f'Gate valve {gv[2:]} (ePix line; monitored, not a gate for the '
+          'Andor)', f'VVPG:AS01:{gv[2:]}:POSITION', LIKELY, as_string=True)
+      for gv in MONITOR_VALVES],
 
     # Lasers
     _ch('gun_uv_shutter', 'laser', '', True,
-        'Gun UV shutter (1 open, 0 closed; the real output is a voltage '
-        'whose levels are not known yet)', 'UED:USR:BHC:AO1:4', CONFIRMED,
-        'V'),
+        'Gun UV shutter (1 open, 0 closed; on the PV 3 V open, 0 V closed)',
+        'UED:USR:BHC:AO1:4', CONFIRMED, 'V'),
     _ch('gun_uv_throttle', 'laser', 'deg', True,
         'Drive UV throttle (max transmission at 21 deg; ~51 for the phase '
         'scan, ~53 for operation)', 'UED:USR:MMN:14:01', CONFIRMED),
-    _ch('pump_shutter', 'laser', '', True, 'Pump main shutter (1 open)',
-        'UED:USR:BHC:AO1:3', CONFIRMED, 'V'),
+    _ch('pump_shutter', 'laser', '', True,
+        'Pump main shutter (1 open, 0 closed; on the PV 3 V open, 0 V '
+        'closed)', 'UED:USR:BHC:AO1:3', CONFIRMED, 'V'),
+    _ch('pump_extra_shutter', 'laser', '', True,
+        'Pump extra shutter (not used in the measurement loop; 3 V open)',
+        'UED:USR:BHC:AO1:2', CONFIRMED, 'V'),
     _ch('pump_hwp', 'laser', 'deg', True,
         'Pump Harmonics HWP: sets the pump energy (max @ 51 deg). Its '
         'setpoints (minimum energy, ~2 uJ) are in ued_setup.yaml',
@@ -116,11 +146,39 @@ _LIST = [
         'SOLN:AS01:121:BCTRL', CONFIRMED, 'kG-m'),
     _ch('sol2', 'magnets', '', True, '2nd solenoid strength',
         'SOLN:AS01:311:BCTRL', CONFIRMED, 'A'),
+    _ch('sol1_rb', 'magnets', '', False, 'Gun solenoid readback (BACT)',
+        'SOLN:AS01:121:BACT', CONFIRMED, 'kG-m'),
+    _ch('sol2_rb', 'magnets', '', False, '2nd solenoid readback (BACT)',
+        'SOLN:AS01:311:BACT', CONFIRMED, 'A'),
+    # Quad doublet QD01/QF01: off by default; read here, no tool drives it.
+    _ch('quad1', 'magnets', '', False,
+        'Quad doublet 1st quad setpoint (BCTRL; not driven by the tools)',
+        'QUAD:AS01:361:BCTRL', CONFIRMED),
+    _ch('quad2', 'magnets', '', False,
+        'Quad doublet 2nd quad setpoint (BCTRL; not driven by the tools)',
+        'QUAD:AS01:371:BCTRL', CONFIRMED),
+    _ch('quad1_rb', 'magnets', '', False, 'Quad doublet 1st quad readback',
+        'QUAD:AS01:361:BACT', CONFIRMED),
+    _ch('quad2_rb', 'magnets', '', False, 'Quad doublet 2nd quad readback',
+        'QUAD:AS01:371:BACT', CONFIRMED),
 
     # Beamline inserters and the chamber light
+    # The screen actuator is YAGS:AS01:270 (in/out). It is moved by command
+    # PVs (OPENCMD inserts, CLOSECMD removes), which this read-only
+    # deployment never writes, so diag_holder stays an operator step; the
+    # tools read the screen state and interlock to check the operator's move.
     _ch('diag_holder', 'beamline', '', True,
-        'Diagnostic screen / Faraday cup inserter (0 out, 1 YAG, 2 FC). No '
-        'PV: an operator step on the real machine', None, UNMAPPED),
+        'Diagnostic screen inserter (0 out, 1 YAG; 2 FC in the simulator '
+        'only). On the real machine an operator step: insert with '
+        'YAGS:AS01:270:OPENCMD, remove with :CLOSECMD (from the panel); '
+        'check with diag_screen_state', None, UNMAPPED),
+    _ch('diag_screen_state', 'beamline', '', False,
+        'Diagnostic screen state (OPENSOLENOID; open = screen inserted, to '
+        'confirm on the machine)', 'YAGS:AS01:270:OPENSOLENOID', LIKELY,
+        as_string=True),
+    _ch('diag_screen_interlock', 'beamline', '', False,
+        'Diagnostic screen interlock summary',
+        'YAGS:AS01:270:INTLKSUM', LIKELY, as_string=True),
     _ch('collimator', 'beamline', 'mm', True,
         'Collimator motor (0 out; nominal 90 mm = the 200 um hole)',
         'UED:USR:MMN:14:07', CONFIRMED),
@@ -142,18 +200,24 @@ _LIST = [
             'check the front panel)', f'SCOP:AS01:SC01:MBBO_CH{n}_SCL',
             CONFIRMED, as_string=True))],
 
-    # Sample stage (SUED chamber, per Fuhao's run-7 list; the motor DESCs
-    # still say Incoupling X/Y, Outcoupling, Capillary, Catcher)
-    _ch('sample_x', 'sample', 'mm', True, 'Sample X', 'UED:USR:MMN:11:03',
-        LIKELY),
-    _ch('sample_y', 'sample', 'mm', True, 'Sample Y', 'UED:USR:MMN:11:04',
-        LIKELY),
-    _ch('sample_z', 'sample', 'mm', True, 'Sample Z', 'UED:USR:MMN:11:05',
-        LIKELY),
-    _ch('sample_pitch', 'sample', 'deg', True, 'Sample pitch',
-        'UED:USR:MMN:11:01', LIKELY),
-    _ch('sample_yaw', 'sample', 'deg', True, 'Sample yaw',
-        'UED:USR:MMN:11:08', LIKELY),
+    # Sample stage: the solid-state (SUED) chamber stage on XPS-11, confirmed
+    # by Fuhao (2026-10-28). Run 4's GUED stage (PI X/Y/Z + SmarAct relative
+    # X) doesn't apply; pitch and yaw replace relative X. The motor DESCs are
+    # stale (Incoupling X/Y, Outcoupling, Capillary, Catcher).
+    _ch('sample_x', 'sample', 'mm', True, 'SUED sample stage X',
+        'UED:USR:MMN:11:03', CONFIRMED),
+    _ch('sample_y', 'sample', 'mm', True, 'SUED sample stage Y',
+        'UED:USR:MMN:11:04', CONFIRMED),
+    _ch('sample_z', 'sample', 'mm', True, 'SUED sample stage Z',
+        'UED:USR:MMN:11:05', CONFIRMED),
+    # Pitch and yaw: read-only for the tools for now (stale IOC soft limits,
+    # Fuhao 2026-10-28); an operator sets them by hand.
+    _ch('sample_pitch', 'sample', 'deg', False,
+        'SUED sample stage pitch (read-only here; set by hand)',
+        'UED:USR:MMN:11:01', CONFIRMED),
+    _ch('sample_yaw', 'sample', 'deg', False,
+        'SUED sample stage yaw (read-only here; set by hand)',
+        'UED:USR:MMN:11:08', CONFIRMED),
     _ch('pattern_quality', 'sample', '', False,
         'Diffraction pattern quality score (0..1). On the real machine, a '
         'score of the far-detector image (readable: cam_far_andor image); '
@@ -177,7 +241,9 @@ CAMERAS = {
                 'Virtual cathode camera (gun UV spot)'),
     'cam_diag_yag': ('UED:GIGE:09', 'IMAGE1', CONFIRMED,
                      'Diagnostic screen camera (z ~0.5 m)'),
-    'cam_sample_yag': ('UED:GIGE:03', 'IMAGE1', CONFIRMED,
+    # GIGE:02 per Fuhao (2026-10-28). GIGE:03 is a different camera with the
+    # same parameters, which the tools used until then; not used now.
+    'cam_sample_yag': ('UED:GIGE:02', 'IMAGE1', LIKELY,
                        'Sample chamber camera (RGB)'),
     'cam_far_andor': ('UED:ANDOR:CAM:03', 'IMAGE2', CONFIRMED,
                       'Far-detector Andor EMCCD'),
@@ -202,7 +268,7 @@ for cam, (prefix, image, status, desc) in CAMERAS.items():
 for axis in ('x', 'y'):
     _LIST.append(_ch(f'cam_sample_yag.cross_{axis}', 'camera', 'px', True,
                      f'Sample chamber camera: e-beam cross {axis}',
-                     f'UED:GIGE:03:Cross2{axis.upper()}', CONFIRMED))
+                     f'UED:GIGE:02:Cross2{axis.upper()}', LIKELY))
 # The Andor is stopped to change its exposure and gain, then started
 _LIST.append(_ch('cam_far_andor.acquire', 'camera', '', True,
                  'Andor acquisition: write 1 to start, 0 to stop; reads '
@@ -221,5 +287,10 @@ for i, units in enumerate(_UNITS):
                          f'{plane.upper()}C{i:02d} steering kick', pv,
                          CONFIRMED if units else UNMAPPED,
                          f'BCTRL, EGU {egu} (unconfirmed)' if units else ''))
+        if units:                       # readback, to check a set took hold
+            _LIST.append(_ch(f'{plane}c{i:02d}_rb', 'correctors', '', False,
+                             f'{plane.upper()}C{i:02d} readback (BACT)',
+                             f'{plane.upper()}COR:AS01:{units[k]}:BACT',
+                             CONFIRMED, egu))
 
 CHANNELS = {c.name: c for c in _LIST}

@@ -68,6 +68,13 @@ def fmt_value(row):
     if row['group'] == 'camera':
         state, exp, gain = vals
         return f'{state}, {exp:g} s, gain {gain:g}'
+    if row['group'] == 'camera_roi':
+        x0, y0, w, h = vals
+        return f'({x0:g}, {y0:g}) {w:g}x{h:g} px'
+    if len(vals) == 2 and all(isinstance(x, float) for x in vals):
+        if row['key'].endswith('cross'):
+            return f'({vals[0]:g}, {vals[1]:g}) px'
+        return f'set {vals[0]:.4g} / act {vals[1]:.4g} {row["units"]}'.strip()
     v = vals[0]
     if hasattr(v, '__len__') and not isinstance(v, str):   # a waveform
         return f'{len(v)} pts, median {statistics.median(v):.3g} ' \

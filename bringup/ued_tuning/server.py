@@ -111,7 +111,8 @@ async def ued_tuning_info() -> str:
     setup = auto.load_setup()
     return json.dumps({'backend': BACKEND, 'stages': list(stages.STAGES),
                        'setup_file': str(auto.setup_path()),
-                       'setup_missing': auto.missing(setup)})
+                       'setup_missing': auto.missing(setup),
+                       'setup_problems': auto.validate(setup)})
 
 
 @mcp.tool()
@@ -156,17 +157,19 @@ async def machine_read(names: list[str]) -> str:
 
 @mcp.tool()
 async def check_beam_prerequisites() -> str:
-    """Read-only: can the e-beam reach the screens? The four gate valves
-    (all must be OPEN), the pump shutter, the collimator, and the setup
-    entries still missing."""
+    """Read-only pre-data checklist: can the e-beam reach the screens (the
+    four gate valves, all OPEN), plus the ePix valve, both shutters, the
+    pump power meter (a warning if it is IN), the collimator, and the setup
+    entries still missing. Relay every warning to the operator."""
     def fn(m, setup):
-        ok, vals = auto.beam_allowed(m)
+        r = auto.readiness(m, setup)
+        ok = r['beam_allowed']
         return {'stage': 'beam prerequisites', 'ok': True, 'accepted': ok,
                 'reason': 'all gate valves OPEN' if ok else
                 'gate valves not all OPEN',
-                'gate_valves': vals, 'pump_shutter': m.get('pump_shutter'),
-                'collimator_mm': m.get('collimator'),
-                'setup_missing': auto.missing(setup)}
+                **r, 'collimator_mm': m.get('collimator'),
+                'setup_missing': auto.missing(setup),
+                'setup_problems': auto.validate(setup)}
     return _call('beam prerequisites', fn)
 
 
@@ -239,7 +242,7 @@ async def go_to_position(name: str) -> str:
 
 @mcp.tool()
 async def save_position(name: str, note: str = '') -> str:
-    """Teach a position: read the sample stage (x, y, z, pitch, yaw) and
+    """Teach a position: read the sample stage (x, y, z) and
     write it as positions.<name> in the setup file (backup kept, change
     logged). Ask an operator before overwriting a taught position."""
     def fn(m, setup):
@@ -278,12 +281,16 @@ async def check_overlap(tolerance_px: float = 3.0) -> str:
 
 # ----------------------------------------------------------------- stages
 @mcp.tool()
-async def gun_ramp(target: float = 0.53, n_steps: int = 300,
-                   dwell_s: float = 2.0) -> str:
-    """Stage 1: ramp the gun amplitude setpoint AREQ (KY01) from 0.05 to
-    target, holding while the gun body temperature is outside 33-37 C and
+async def gun_ramp(target: float = 0.53, n_steps: int | None = None,
+                   dwell_s: float | None = None) -> str:
+    """Stage 1: ramp the gun amplitude setpoint AREQ (KY03, TS8) from 0.05 to
+    target, holding while the gun body temperature is outside its window
+    (gun.ramp_temp_min_C..ramp_temp_max_C in the setup file, 33-36 C) and
     aborting to AREQ = 0 on a temperature run-away, a feedback trip, or an
-    amplitude readback that stops tracking."""
+    amplitude readback that stops tracking. Leave n_steps and dwell_s unset:
+    they come from gun.ramp_n_steps / gun.ramp_dwell_s in the setup file
+    (600 x 2 s = 20 min, for the reduced cooling-water flow). Pass them only
+    if the operator asks for a different ramp."""
     return _call('gun_ramp', stages.gun_ramp, target=target, n_steps=n_steps,
                  dwell_s=dwell_s)
 
@@ -366,7 +373,7 @@ async def tune_sample_position(sample: str = 'bi', span_mm: float = 0.15,
                                single_crystal: bool = False) -> str:
     """Stage 7: full view, go to the sample, steer XC/YC04 so the main beam
     goes through the Andor through hole, Andor exposure 2 s / gain 1000,
-    raster x, y (and pitch, yaw for a single crystal) for the pattern, save
+    raster x, y (pitch and yaw are set by hand) for the pattern, save
     a record with the images and settings. Always needs an operator to
     judge the pattern and save the position."""
     return _call('tune_sample_position', stages.tune_sample_position,

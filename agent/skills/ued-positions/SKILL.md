@@ -29,14 +29,31 @@ and the safety ranges every write is checked against.
 | Want | Tool | Note |
 |---|---|---|
 | See the taught positions and where the stage is | `list_positions` | read-only |
-| Go to a position ("go2YAG", "go2Andor", "go2Bi") | `go_to_position(name)` | pump shutter closed first; every axis checked against its safety range before the first move; readback verified |
-| Teach a position | `save_position(name, note)` | reads x, y, z, pitch, yaw now and writes that one line |
+| Go to a position ("go2YAG", "go2Andor", "go2Bi") | `go_to_position(name)` | everything range-checked first; pump and gun UV shutters closed; sample camera to the `mid` view; the position's `pump_hwp_deg` applied if it has one; x/y/z moved and verified; gun UV reopened only if it was open |
+| Teach a position | `save_position(name, note)` | reads x, y, z now and writes that one line (the tools never move pitch or yaw: operators set them by hand) |
 | Camera view | `set_camera_view(view)` | `full_view`, `ebeam` or `laser` |
 
 The old run-4 scripts map like this: `goToYAG` is `go_to_position('yag')`,
 `goToAndor1`/`StageOut` is `go_to_position('andor')`, `goToBi` is
 `go_to_position('bi')`, and `saveYAG` is `save_position('yag')`. Their
 coordinates were on the old PI stage and don't carry over.
+
+## Operators edit the same file
+
+Positions have one home, `positions:` in the setup file. Operators may
+teach or change them without the agent, with `bringup/positions.py`
+(`list`, `where`, `save <name>`, `set <name> --x ..`, `check`, `history`)
+or by editing the file. Both go through the same checks as your
+`save_position`. So:
+
+- Call `list_positions` again before a move: an operator may have changed
+  an entry since you last looked.
+- A position can carry extra fields an operator added (`note`, a
+  per-sample pump setting, ...). They are kept when you re-save; report
+  them, don't drop or rewrite them.
+- `ued_tuning_info` lists `setup_problems` (a bad hand edit: a typo, a
+  value outside its safety range). If there are any, stop and show the
+  operator the exact line before using the file.
 
 ## Teaching a position
 

@@ -1,7 +1,7 @@
 """UED bring-up stages, one procedure each (proposal, Workflow 1 + 2).
 
 The procedures follow the operators' 2026-10 notes: the dry-run notes for
-stages 1-3 (gun RF on KY01; the scope-based emission-phase scan; Cameron's
+stages 1-3 (gun RF on KY03/TS8; the scope-based emission-phase scan; Cameron's
 UV feedback loop) and Fuhao Ji's procedures for stages 4-8.
 
 Every procedure talks only to a backend with get(name), put(name, value),
@@ -45,7 +45,7 @@ from collections import Counter
 
 import numpy as np
 
-from .channels import CHANNELS, HOLDER_OUT, HOLDER_YAG
+from .channels import CHANNELS, HOLDER_OUT, HOLDER_YAG, to_pv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(
     __file__))))
@@ -57,8 +57,10 @@ MV_PER_DIV = {'1mV': 1, '2mV': 2, '5mV': 5, '10mV': 10, '20mV': 20,
               '50mV': 50, '100mV': 100, '200mV': 200, '500mV': 500,
               '1V': 1e3, '2V': 2e3, '5V': 5e3, '10V': 1e4}
 OPERATOR_HINT = {
-    'diag_holder': 'the diagnostic screen has no PV: insert or extract it by '
-                   'hand, then rerun with diag_screen_by_operator=true',
+    'diag_holder': 'the diagnostic screen (YAGS:AS01:270) is moved by an '
+                   'operator, not the agent: insert or extract it from the '
+                   'panel, check diag_screen_state, then rerun with '
+                   'diag_screen_by_operator=true',
 }
 
 
@@ -85,6 +87,9 @@ class Recorder:
 
     def put(self, name, value):
         ch = CHANNELS[name]
+        if not ch.writable:              # read-only for the tools
+            raise auto.SafetyError(f'{name} is read-only for these tools '
+                                   f'({ch.desc}); an operator sets it')
         if name in self.manual:          # done by hand, already
             self.operator_steps.append(f'{name} = {value} (by the operator)')
             return
@@ -123,7 +128,8 @@ def _num(v, nd=4):
 
 def _result(stage, rec, ok, accepted, reason, needs_operator=False, **data):
     writes = [{'t_s': t, 'channel': n, 'value': _num(v),
-               'pv': CHANNELS[n].pv, 'status': CHANNELS[n].status}
+               'pv': CHANNELS[n].pv, 'pv_value': _num(to_pv(n, v)),
+               'status': CHANNELS[n].status}
               for t, n, v in rec.puts]
     shown = writes if len(writes) <= 24 else writes[:18] + writes[-6:]
     return {
@@ -270,13 +276,21 @@ def _laser_view(rec, setup):
 
 
 # ---------------------------------------------------------------- stage 1
-def gun_ramp(m, setup, target=0.53, n_steps=300, dwell_s=2.0):
+def gun_ramp(m, setup, target=0.53, n_steps=None, dwell_s=None):
+    """Stage 1. Steps and dwell default to gun.ramp_n_steps and
+    gun.ramp_dwell_s in the setup file (20 min since 2026-10-28, for the
+    reduced cooling-water flow), else the original 300 x 2 s."""
     rec = Recorder(m, setup)
     early = _precheck(rec, '1 gun ramp-up', beam=False)
     if early:
         return early
+    g = setup.get('gun') or {}
+    n_steps = int(n_steps or g.get('ramp_n_steps') or 300)
+    dwell_s = float(dwell_s or g.get('ramp_dwell_s') or 2.0)
     start_areq = float(rec.get('areq'))
-    cfg = RampConfig(target=target, n_steps=n_steps, dwell_s=dwell_s)
+    cfg = RampConfig(target=target, n_steps=n_steps, dwell_s=dwell_s,
+                     temp_min=float(g.get('ramp_temp_min_C', 33.0)),
+                     temp_max=float(g.get('ramp_temp_max_C', 37.0)))
     res = ramp(rec, cfg)
     aact = avg(rec, 'aact', 5)
     fb = (rec.get('pfb_status'), rec.get('afb_status'))
@@ -842,7 +856,9 @@ def tune_sample_position(m, setup, sample='bi', span_mm=0.15, points=7,
     beam goes through the Andor's through hole (else it saturates the Andor
     at high gain); Andor stop -> exposure 2 s, gain 1000 -> start; raster
     the stage x, y for the pattern (total scattering intensity and, where a
-    score exists, pattern quality); for a single crystal also pitch and yaw.
+    score exists, pattern quality). For a single crystal the pitch/yaw scan
+    runs only if those channels are writable: for now they are not, and
+    the operator balances the symmetry by hand.
     Saves the candidate with the Andor and chamber-camera images and the
     machine settings. Always needs an operator to judge the pattern."""
     stage = '7 sample position'
@@ -881,8 +897,10 @@ def tune_sample_position(m, setup, sample='bi', span_mm=0.15, points=7,
     ys = float(pos0['y']) + np.linspace(-span_mm, span_mm, points)
     inten = np.full((points, points), np.nan)
     qual = np.full((points, points), np.nan)
-    for j, y in enumerate(ys):
-        for i, x in enumerate(xs):
+    for j, y in enumerate(ys):        # serpentine: every other row back,
+        cols = range(points) if j % 2 == 0 else range(points - 1, -1, -1)
+        for i in cols:                  # so the stage never runs back empty
+            x = xs[i]
             rec.put('sample_x', float(x))
             rec.put('sample_y', float(y))
             rec.sleep(1)
@@ -898,7 +916,14 @@ def tune_sample_position(m, setup, sample='bi', span_mm=0.15, points=7,
     rec.put('sample_y', float(ys[j]))
     rec.sleep(1)
     angles = None
-    if single_crystal:
+    angles_by_tool = (CHANNELS['sample_pitch'].writable
+                      and CHANNELS['sample_yaw'].writable)
+    if single_crystal and not angles_by_tool:
+        rec.operator_steps.append(
+            'single crystal: balance the pattern symmetry with the sample '
+            'pitch and yaw by hand (the tools do not move them for now), '
+            'then rerun or save the position')
+    if single_crystal and angles_by_tool:
         best, angles = (-1.0, None), []
         p0 = float(rec.get('sample_pitch'))
         y0 = float(rec.get('sample_yaw'))

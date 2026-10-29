@@ -35,8 +35,14 @@ SEED = HERE / 'ued_setup.yaml'
 LIVE_DEFAULT = Path('/sdf/group/mli/zhezhang/ued/agentic/config/'
                     'ued_setup.yaml')
 RECORDS_DEFAULT = Path('/sdf/group/mli/zhezhang/ued/agentic/records')
-AXES = ('x', 'y', 'z', 'pitch', 'yaw')
+# The axes the tools read and move. Pitch (MMN:11:01) and yaw (MMN:11:08)
+# are left out on purpose (Fuhao, 2026-10-28): their IOC soft limits are
+# stale (pitch -11.5..-9.6, yaw -36..0), so the tools never touch them;
+# an operator sets them by hand. Pitch/yaw fields in a position are kept
+# as notes and never moved.
+AXES = ('x', 'y', 'z')
 GATE_VALVES = ('gv240', 'gv272', 'gv280', 'gv295')
+MONITOR_VALVES = ('gv320',)     # ePix line: reported, not a gate
 PUMP_LEVELS = {'min_energy': 'hwp_min_energy_deg',
                'pump_probe': 'hwp_pump_probe_deg'}
 
@@ -84,7 +90,7 @@ def check_limits(setup, name, value):
     lo, hi = float(lim[0]), float(lim[1])
     if not lo <= float(value) <= hi:
         raise SafetyError(f'{name} = {value} is outside its safety range '
-                          f'[{lo:g}, {hi:g}] in {setup_path()}')
+                          f'[{lo:g}, {hi:g}] (limits in the setup file)')
 
 
 def missing(setup) -> list:
@@ -97,22 +103,89 @@ def missing(setup) -> list:
     return out
 
 
-def save_position(name, coords, note='', path=None) -> Path:
+NAME_RE = r'[a-z][a-z0-9_]*'
+
+
+def _flow(v):
+    """One YAML flow value: numbers rounded, strings quoted."""
+    if v is None:
+        return 'null'
+    if isinstance(v, bool):
+        return 'true' if v else 'false'
+    if isinstance(v, (int, float)):
+        return repr(round(float(v), 4))
+    return json.dumps(str(v))       # a JSON string is valid YAML
+
+
+def validate(setup) -> list:
+    """Problems in the setup file a hand edit can introduce: bad position
+    names or entries, non-numeric or out-of-range axes, malformed safety
+    ranges. Empty when the file is fine (null entries are not problems:
+    missing() lists those)."""
+    probs = []
+    pos = setup.get('positions')
+    if not isinstance(pos, dict):
+        return ['positions: missing or not a mapping']
+    for name, p in pos.items():
+        where = f'positions.{name}'
+        if not re.fullmatch(NAME_RE, str(name)):
+            probs.append(f'{where}: names are lower_case words')
+        if p is None:
+            continue
+        if not isinstance(p, dict):
+            probs.append(f'{where}: must be {{x: .., y: .., ...}} or null')
+            continue
+        for a in AXES:
+            if a not in p:
+                continue
+            v = p[a]
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                probs.append(f'{where}.{a}: {v!r} is not a number')
+                continue
+            try:
+                check_limits(setup, f'sample_{a}', v)
+            except SafetyError as exc:
+                probs.append(f'{where}.{a}: {exc}')
+        if not any(a in p for a in AXES):
+            probs.append(f'{where}: no stage axis ({", ".join(AXES)})')
+    for k, lim in (setup.get('limits') or {}).items():
+        ok = (isinstance(lim, list) and len(lim) == 2
+              and all(isinstance(x, (int, float)) for x in lim)
+              and lim[0] < lim[1])
+        if not ok:
+            probs.append(f'limits.{k}: must be [low, high] with low < high')
+    return probs
+
+
+def save_position(name, coords, note='', path=None, extra=None) -> Path:
     """Write positions.<name> as one line, keeping the rest of the file
     (comments included) as it is. Keeps the previous file as .bak and
-    appends the change to ued_setup.history.log beside it."""
-    if not re.fullmatch(r'[a-z][a-z0-9_]*', name):
+    appends the change to ued_setup.history.log beside it.
+
+    coords may hold only some axes: they update the taught entry, and the
+    other axes and any extra fields an operator added by hand (a note, a
+    per-sample pump setting, ...) are kept. extra adds or updates such
+    fields."""
+    if not re.fullmatch(NAME_RE, name):
         raise ValueError(f'position names are lower_case words, not {name!r}')
     path = Path(path or setup_path())
     if path == SEED:            # never edit the reviewed seed in place
         LIVE_DEFAULT.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(SEED, LIVE_DEFAULT)
         path = LIVE_DEFAULT
+    t_read = path.stat().st_mtime   # to catch a concurrent edit
     old = load_setup(path)
     for a, v in coords.items():
+        if a not in AXES:
+            raise ValueError(f'{a!r} is not a stage axis ({", ".join(AXES)})')
         check_limits(old, f'sample_{a}', v)
-    value = '{' + ', '.join(f'{a}: {round(float(coords[a]), 4)}'
-                            for a in AXES if a in coords) + '}'
+    before = (old.get('positions') or {}).get(name)
+    merged = dict(before) if isinstance(before, dict) else {}
+    merged.update({a: round(float(v), 4) for a, v in coords.items()})
+    merged.update(extra or {})
+    keys = [a for a in AXES if a in merged] + \
+        [k for k in merged if k not in AXES]
+    value = '{' + ', '.join(f'{k}: {_flow(merged[k])}' for k in keys) + '}'
     lines = path.read_text().splitlines(keepends=True)
     start = next(i for i, ln in enumerate(lines)
                  if re.match(r'positions:\s*(#.*)?$', ln))
@@ -134,9 +207,13 @@ def save_position(name, coords, note='', path=None) -> Path:
         lines.insert(last + 1, f'  {name}: {value}\n')
     text = ''.join(lines)
     new = yaml.safe_load(text)
-    if {a: new['positions'][name][a] for a in coords} != \
-            {a: round(float(v), 4) for a, v in coords.items()}:
+    if new['positions'][name] != {k: (round(float(v), 4) if isinstance(
+            v, (int, float)) and not isinstance(v, bool) else v)
+            for k, v in merged.items()}:
         raise RuntimeError('position did not round-trip; file left as it was')
+    if path.stat().st_mtime != t_read:
+        raise RuntimeError(f'{path} changed while saving (someone else edited '
+                           'it); file left as it was, try again')
     shutil.copy2(path, path.with_suffix('.yaml.bak'))
     tmp = path.with_suffix('.yaml.tmp')
     tmp.write_text(text)
@@ -172,6 +249,40 @@ def close_pump_shutter(m):
     m.put('pump_shutter', 0)
 
 
+def close_shutters(m):
+    """Pump and gun UV shutters closed, as before every move in Xinxin's
+    Run 6 code (pumpLaser_Close, gunUV_Close): no laser on the sample and
+    no e-beam on the frame or holder while the stage travels."""
+    m.put('pump_shutter', 0)
+    m.put('gun_uv_shutter', 0)
+
+
+def readiness(m, setup) -> dict:
+    """Read-only pre-data checklist (Xinxin's getAll): gate valves, the
+    ePix valve, both shutters, the pump power meter. Returns the states and
+    a list of warnings for an operator."""
+    ok, vals = beam_allowed(m)
+    warn = [f'gate valve {k[2:]} is {v}: no e-beam' for k, v in vals.items()
+            if v != 'OPEN']
+    out = {'gate_valves': vals, 'beam_allowed': ok}
+    for gv in MONITOR_VALVES:
+        try:
+            out[gv] = m.get(gv)
+        except Exception as exc:          # monitored only: report, go on
+            out[gv] = f'unreadable ({exc})'
+    for sh in ('gun_uv_shutter', 'pump_shutter'):
+        out[sh] = 'open' if m.get(sh) else 'closed'
+    pm = float(m.get('pump_power_meter'))
+    pm_in = float((setup.get('pump') or {}).get('power_meter_in_mm', 40.0))
+    out['pump_power_meter_mm'] = pm
+    if pm > 0.85 * pm_in:                 # Xinxin: > 35 with in = 40
+        warn.append(f'pump power meter is IN ({pm:g} mm): it blocks the '
+                    'pump; take it out before pump-probe')
+    out['not_checked'] = ['pump outcoupling mirror (no PV mapped this run)']
+    out['warnings'] = warn
+    return out
+
+
 def gate_valves(m) -> dict:
     return {gv: m.get(gv) for gv in GATE_VALVES}
 
@@ -188,13 +299,29 @@ def current_position(m) -> dict:
 
 def go_to(m, setup, name, settle_s=5.0, tol=0.01) -> dict:
     """Move the sample stage to a taught position ("go2YAG", "go2Bi",
-    "go2Andor"): pump shutter closed first, every axis checked against its
-    safety range before the first move, then the readback verified."""
+    "go2Andor"), the way Xinxin's go2... functions do:
+      1. every axis (and the position's pump HWP, if it has one) checked
+         against its safety range before anything moves;
+      2. pump and gun UV shutters closed;
+      3. the sample camera to the motion view (motion.camera_view, "mid");
+      4. the pump HWP to the position's pump_hwp_deg, if it has one;
+      5. x, y, z moved, the readback verified;
+      6. the gun UV shutter reopened if it was open before.
+    Only x, y and z move (AXES); pitch and yaw are an operator's."""
     pos = need(setup, 'positions', name)
-    close_pump_shutter(m)
     axes = [a for a in AXES if pos.get(a) is not None]
     for a in axes:
         check_limits(setup, f'sample_{a}', pos[a])
+    hwp = pos.get('pump_hwp_deg')
+    if hwp is not None:
+        check_limits(setup, 'pump_hwp', hwp)
+    uv_was_open = bool(m.get('gun_uv_shutter'))
+    close_shutters(m)
+    view = (setup.get('motion') or {}).get('camera_view')
+    if view:
+        set_view(m, setup, view)
+    if hwp is not None:
+        m.put('pump_hwp', float(hwp))
     for a in axes:
         m.put(f'sample_{a}', float(pos[a]))
     m.sleep(settle_s)
@@ -203,16 +330,20 @@ def go_to(m, setup, name, settle_s=5.0, tol=0.01) -> dict:
            if abs(now[a] - float(pos[a])) > tol}
     if off:
         raise RuntimeError(f'the stage did not reach {name}: off by {off}')
+    if uv_was_open:
+        m.put('gun_uv_shutter', 1)
     return now
 
 
 def set_view(m, setup, view, settle_s=1.0):
     """Sample chamber camera plus chamber light: full_view (state 1), ebeam
-    (state 2) or laser (state 3)."""
+    (state 2), laser (state 3), or Xinxin's high / mid / low presets. A view
+    without a `light` entry leaves the light as it is."""
     v = need(setup, 'camera_views', view)
     m.put('cam_sample_yag.exposure', float(v['exposure']))
     m.put('cam_sample_yag.gain', float(v['gain']))
-    m.put('chamber_light', int(v['light']))
+    if v.get('light') is not None:
+        m.put('chamber_light', int(v['light']))
     m.sleep(settle_s)
 
 

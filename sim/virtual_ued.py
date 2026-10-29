@@ -56,8 +56,8 @@ BRINGUP = Path(os.environ.get('UED_BRINGUP_DIR', HERE.parent / 'bringup'))
 sys.path.insert(0, str(BRINGUP))
 
 import gptsim  # noqa: E402
-from ued_tuning.channels import (CHANNELS, GATE_VALVES,  # noqa: E402
-                                 HOLDER_OUT, HOLDER_YAG)
+from ued_tuning.channels import (  # noqa: E402
+    CHANNELS, GATE_VALVES, MONITOR_VALVES, HOLDER_OUT, HOLDER_YAG)
 from virtual_gun import VirtualGun  # noqa: E402
 
 MV_PER_AREQ = 128.3                      # assumed linear (sim/README.md)
@@ -92,7 +92,7 @@ TRUTH = {
     'scope_baseline_div': 3.36,          # CH2, measured 2026-10-16
     'scope_noise_div': 0.237,
     'scope_mV_per_fC': -0.17,
-    'gate_valves': {gv: 'OPEN' for gv in GATE_VALVES},
+    'gate_valves': {gv: 'OPEN' for gv in GATE_VALVES + MONITOR_VALVES},
 }
 
 POSITIONS = {                            # where things are on the stage
@@ -116,7 +116,8 @@ CAMERA_MODEL = {
 }
 # The real GigE cameras are 8-bit; these keep 12 bits so the count scales
 # above stay as they were tuned. The sample camera's axis is the real e-beam
-# cross (UED:GIGE:03:Cross2X/Y on 2026-10-16).
+# cross as read on 2026-10-16 (then from UED:GIGE:03; the sample camera is
+# UED:GIGE:02 since 2026-10-28, whose cross may differ).
 LASER_K = 5e9            # laser counts per (energy fraction x second)
 LIGHT_K = 2e5            # chamber-light counts per second, sample camera
 LIGHT_SPOT_UM = (600.0, -400.0, 1500.0, 1200.0)   # x, y, sx, sy
@@ -157,7 +158,7 @@ class VirtualUED:
             # the gun starts at an emitting phase (yesterday's setpoint, a
             # few degrees off), the UV throttle wherever it was left
             'preq': 160.0, 'gun_uv_shutter': 0, 'gun_uv_throttle': 50.0,
-            'pump_shutter': 0, 'pump_hwp': 6.0, 'pump_nd_wheel': 310.0,
+            'pump_shutter': 0, 'pump_extra_shutter': 0, 'pump_hwp': 6.0, 'pump_nd_wheel': 310.0,
             'pump_lens_h': 0.0, 'pump_lens_v': 0.0,
             # power meter in and light on, as found on 2026-10-16
             'pump_power_meter': 40.0, 'chamber_light': 1,
@@ -204,7 +205,7 @@ class VirtualUED:
         elif name == 'preq':
             self.sp['preq'] = _wrap180(float(value))
         elif name in ('diag_holder', 'gun_uv_shutter', 'pump_shutter',
-                      'chamber_light'):
+                      'pump_extra_shutter', 'chamber_light'):
             self.sp[name] = int(round(float(value)))
         else:
             self.sp[name] = float(value)
@@ -221,6 +222,11 @@ class VirtualUED:
             return self.gv[name]
         if name == 'pact':
             return self.sp['preq'] + 0.05 * self.rng.standard_normal()
+        if name == 'diag_screen_state':         # mirrors the holder
+            return ('Open' if self.sp['diag_holder'] != HOLDER_OUT
+                    else 'Closed')
+        if name == 'diag_screen_interlock':
+            return 'OK'
         if name == 'scope_ch2_trace':
             return self._scope_trace()
         if name == 'scope_ch2_vdiv':
@@ -237,6 +243,10 @@ class VirtualUED:
             if what == 'gain':
                 return self.cam[cam][1]
             return self._camera(cam)[what]
+        if name.endswith('_rb') and name[:-3] in self.sp:   # BACT = BCTRL
+            return self.sp[name[:-3]]
+        if name in ('quad1', 'quad2', 'quad1_rb', 'quad2_rb'):
+            return 0.0                          # the doublet is off
         if name == 'pattern_quality':
             return self._pattern()
         if name == 'diffraction_signal':
