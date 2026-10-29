@@ -29,7 +29,8 @@ operator.
    valves (`gv240`, `gv272`, `gv280`, `gv295`) must read OPEN. If one doesn't,
    stop and tell the operator which ones; the stage tools stop there anyway.
    Relay every entry in its `warnings` (pump power meter IN, a closed
-   valve) and its `not_checked` list (the pump outcoupling mirror has no PV:
+   valve, the pump outcoupling mirror IN) and its `not_checked` list (e.g.
+   the outcoupling mirror's IN/OUT positions not set yet:
    ask the operator to confirm it is out before pump-probe). The ePix valve
    `gv320` is reported for information only.
 
@@ -74,10 +75,11 @@ Notes per stage:
   and `gun.ramp_dwell_s` in the setup file): it was slowed from 10 min for
   the reduced gun cooling-water flow. Don't pass `n_steps` or `dwell_s`
   unless the operator asks; say how long the ramp will take before starting.
-  The gun body temperature window is 33-36 C (`gun.ramp_temp_min_C` /
-  `ramp_temp_max_C`; the ceiling was lowered from 37 C for the same reason).
-  Holds near 36 C late in the ramp are expected; report them. If the ramp
-  aborts on temperature, tell the operator and don't restart it unasked.
+  The gun body temperature window is 33-37 C (`gun.ramp_temp_min_C` /
+  `ramp_temp_max_C`). The gun idles near 36.4 C with the RF off, so there is
+  little headroom with the reduced flow: holds near 37 C are expected;
+  report them. If the ramp aborts on temperature, tell the operator and
+  don't restart it unasked.
 - **2.** "Emission phase" here is the onset, where the scope charge first rises
   5 sigma above the trace noise, with the UV throttle at ~51. The operator may
   define it differently (half-max, peak); ask if the result looks off. The

@@ -160,6 +160,7 @@ class VirtualUED:
             'preq': 160.0, 'gun_uv_shutter': 0, 'gun_uv_throttle': 50.0,
             'pump_shutter': 0, 'pump_extra_shutter': 0, 'pump_hwp': 6.0, 'pump_nd_wheel': 310.0,
             'pump_lens_h': 0.0, 'pump_lens_v': 0.0,
+            'pump_incoupling': 0.0, 'pump_outcoupling': 0.1,
             # power meter in and light on, as found on 2026-10-16
             'pump_power_meter': 40.0, 'chamber_light': 1,
             'cam_sample_yag.cross_x': 1080.0, 'cam_sample_yag.cross_y': 1034.0,

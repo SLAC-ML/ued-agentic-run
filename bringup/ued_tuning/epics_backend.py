@@ -17,11 +17,17 @@ ued_setup.sh sets on ued-daq: 172.21.36.255:5064 172.27.99.255:5058.
 from __future__ import annotations
 
 import math
+import re
 import time
 
 import numpy as np
 
 from .channels import CAMERAS, CHANNELS, STAT_NAMES, from_pv, to_pv
+
+# Motor records (XPS MMN, IMS MMS, SmarAct MCS): the base PV is the setpoint
+# (VAL); where the motor actually is, is <PV>.RBV. Reads take the readback,
+# so a taught position and a move check use the real position.
+MOTOR_RE = re.compile(r':(MMN|MMS):|:MCS2?:')
 
 
 class WritesDisabled(RuntimeError):
@@ -142,8 +148,8 @@ class EpicsBackend:
         try:
             if cam in CAMERAS and stat in STAT_NAMES:
                 return self._camera_stats(cam)[stat]
-            return from_pv(name, self._read(ch.pv,
-                                            as_string=ch.as_string))
+            pv = ch.pv + '.RBV' if MOTOR_RE.search(ch.pv) else ch.pv
+            return from_pv(name, self._read(pv, as_string=ch.as_string))
         except ChannelUnavailable as exc:
             raise ChannelUnavailable(f'{name}: {exc}') from None
 

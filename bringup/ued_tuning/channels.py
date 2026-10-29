@@ -132,6 +132,15 @@ _LIST = [
     _ch('pump_power_meter', 'laser', 'mm', True,
         'Pump power meter (in @ 40 mm blocks the pump; out @ 0)',
         'UED:USR:MMN:05:06', CONFIRMED),
+    # Pump coupling mirrors of the 1st (SUED) chamber (Fuhao, 2026-10-28).
+    # Read-only here: the readiness check warns if the outcoupling mirror is
+    # IN (it blocks the pump), per pump.outcoupling_*_mm in the setup file.
+    _ch('pump_incoupling', 'laser', 'mm', False,
+        '1st chamber pump incoupling mirror (read-only here)',
+        'UED:USR:MMN:04:03', CONFIRMED),
+    _ch('pump_outcoupling', 'laser', 'mm', False,
+        '1st chamber pump outcoupling mirror (read-only here; IN blocks '
+        'the pump)', 'UED:USR:MMN:04:02', CONFIRMED),
     _ch('pump_lens_h', 'laser', 'mm', True,
         'Pump steering H: moves the pump spot on the sample. Fuhao calls it '
         '"pump laser mirror H"; mapped to the run-7 list\'s pump lens H '
@@ -200,24 +209,25 @@ _LIST = [
             'check the front panel)', f'SCOP:AS01:SC01:MBBO_CH{n}_SCL',
             CONFIRMED, as_string=True))],
 
-    # Sample stage: the solid-state (SUED) chamber stage on XPS-11, confirmed
-    # by Fuhao (2026-10-28). Run 4's GUED stage (PI X/Y/Z + SmarAct relative
-    # X) doesn't apply; pitch and yaw replace relative X. The motor DESCs are
-    # stale (Incoupling X/Y, Outcoupling, Capillary, Catcher).
+    # Sample stage: the 1st (SUED) chamber stage, per Fuhao (2026-10-28):
+    # IMS motors UED:UM1:MMS:01..03 plus XPS-04. (XPS-11, used before, is the
+    # Run 6 jet hardware: its DESCs, Incoupling X/Y, Outcoupling, Capillary
+    # Y, Catcher Y, were right; this run's coupling mirrors are on XPS-04 and
+    # XPS-13.) Run 4's GUED stage doesn't apply.
     _ch('sample_x', 'sample', 'mm', True, 'SUED sample stage X',
-        'UED:USR:MMN:11:03', CONFIRMED),
+        'UED:UM1:MMS:02', CONFIRMED),
     _ch('sample_y', 'sample', 'mm', True, 'SUED sample stage Y',
-        'UED:USR:MMN:11:04', CONFIRMED),
+        'UED:USR:MMN:04:01', CONFIRMED),
     _ch('sample_z', 'sample', 'mm', True, 'SUED sample stage Z',
-        'UED:USR:MMN:11:05', CONFIRMED),
-    # Pitch and yaw: read-only for the tools for now (stale IOC soft limits,
-    # Fuhao 2026-10-28); an operator sets them by hand.
+        'UED:UM1:MMS:01', CONFIRMED),
+    # Pitch and yaw: read-only for the tools for now; an operator sets them
+    # by hand (Fuhao, 2026-10-28).
     _ch('sample_pitch', 'sample', 'deg', False,
         'SUED sample stage pitch (read-only here; set by hand)',
-        'UED:USR:MMN:11:01', CONFIRMED),
+        'UED:USR:MMN:04:04', CONFIRMED),
     _ch('sample_yaw', 'sample', 'deg', False,
         'SUED sample stage yaw (read-only here; set by hand)',
-        'UED:USR:MMN:11:08', CONFIRMED),
+        'UED:UM1:MMS:03', CONFIRMED),
     _ch('pattern_quality', 'sample', '', False,
         'Diffraction pattern quality score (0..1). On the real machine, a '
         'score of the far-detector image (readable: cam_far_andor image); '

@@ -106,25 +106,27 @@ CHANNELS = [
     _motor('opa_delay', 'pump_probe', 'OPA delay', 'UED:USR:MMN:06:05', None,
            'mm', CONFIRMED, 'in the run-7 list'),
 
-    # Sample stage: the solid-state (SUED) chamber stage on XPS-11, per
-    # Fuhao (2026-10-28): X, Y, Z, pitch, yaw. Run 4 was a gas-phase run on
-    # the GUED chamber (PI hexapod X/Y/Z + SmarAct relative X), so it has no
-    # equivalent here (old_pv None) and relative X is retired; pitch and yaw
-    # take its place. The XPS-11 motor DESCs are stale (Incoupling X/Y,
-    # Outcoupling, Capillary Y, Catcher Y).
-    _motor('sample_x', 'sample', 'SUED sample stage X', 'UED:USR:MMN:11:03',
-           None, 'mm', CONFIRMED, 'run-7 list; DESC stale ("Incoupling X")'),
-    _motor('sample_y', 'sample', 'SUED sample stage Y', 'UED:USR:MMN:11:04',
-           None, 'mm', CONFIRMED, 'run-7 list; DESC stale ("Incoupling Y")'),
-    _motor('sample_z', 'sample', 'SUED sample stage Z', 'UED:USR:MMN:11:05',
-           None, 'mm', CONFIRMED,
-           'run-7 list; DESC stale ("Outcoupling in@24.9")'),
-    _motor('sample_pitch', 'sample', 'SUED sample stage pitch',
-           'UED:USR:MMN:11:01', None, 'deg', CONFIRMED,
-           'run-7 list; DESC stale ("Capillary Y")'),
-    _motor('sample_yaw', 'sample', 'SUED sample stage yaw',
-           'UED:USR:MMN:11:08', None, 'deg', CONFIRMED,
-           'run-7 list; DESC stale ("Catcher Y")'),
+    # Sample stage, 1st (SUED) chamber, per Fuhao (2026-10-28). Run 4 was a
+    # gas-phase run on the GUED chamber, so there is no old_pv.
+    _motor('sample_x', 'sample', 'SUED sample stage X', 'UED:UM1:MMS:02',
+           None, 'mm', CONFIRMED, 'IMS motor'),
+    _motor('sample_y', 'sample', 'SUED sample stage Y', 'UED:USR:MMN:04:01',
+           None, 'mm', CONFIRMED, 'XPS-04'),
+    _motor('sample_z', 'sample', 'SUED sample stage Z', 'UED:UM1:MMS:01',
+           None, 'mm', CONFIRMED, 'IMS motor'),
+    _motor('sample_pitch', 'sample', 'SUED sample stage pitch (1st pitch)',
+           'UED:USR:MMN:04:04', None, 'deg', CONFIRMED,
+           'XPS-04; read-only for the tools'),
+    _motor('sample_yaw', 'sample', 'SUED sample stage yaw (1st yaw)',
+           'UED:UM1:MMS:03', None, 'deg', CONFIRMED,
+           'IMS motor; read-only for the tools'),
+    # Pump coupling mirrors, 1st chamber (Fuhao, 2026-10-28). XPS-11 is
+    # the Run 6 jet hardware and is no longer mapped.
+    _motor('pump_incoupling', 'laser', '1st chamber pump incoupling mirror',
+           'UED:USR:MMN:04:03', None, 'mm', CONFIRMED),
+    _motor('pump_outcoupling', 'laser',
+           '1st chamber pump outcoupling mirror', 'UED:USR:MMN:04:02', None,
+           'mm', CONFIRMED, 'IN blocks the pump; the readiness check warns'),
 
     # Beamline devices. Order along the beam (kicker sketch): gun, gun
     # solenoid, XC/YC00, Faraday cup + Diag YAG, collimator, XC/YC01, ...
@@ -216,7 +218,7 @@ CHANNELS = [
            'ramp_rf.py expects the string Active; reads Disable when off'),
     _value('gun_temp', 'gun_rf', 'Gun body temperature',
            'APC:AS01:TM01:M2_CH2_SPARE', 'APC:AS01:TM01:M2_CH2_SPARE', 'C',
-           CONFIRMED, 'ramp holds outside gun.ramp_temp_min_C..max_C (33..36 C)'),
+           CONFIRMED, 'ramp holds outside gun.ramp_temp_min_C..max_C (33..37 C)'),
     _value('rep_rate', 'gun_rf', 'E-beam repetition rate',
            'KLYS:AS01:1:PulseRepetitionFreq', None, 'Hz', CONFIRMED,
            'listed in the current DAQ epicsArch'),
@@ -239,33 +241,27 @@ CHANNELS = [
             ('QUAD:AS01:371:BCTRL', 'QUAD:AS01:371:BACT'),
             'QUAD:AS01:371:BACT', '', CONFIRMED),
 
-    # 2nd SUED sample stage (run-7 list, "updated"). Its Z, MMN:03:04, is
-    # also the pump long delay in the same list, so Z stays unmapped until
-    # that is resolved.
-    _motor('sample2_x', 'sample', '2nd SUED sample stage X',
-           'UED:USR:MMN:03:05', None, 'mm', LIKELY, 'run-7 list'),
-    _motor('sample2_y', 'sample', '2nd SUED sample stage Y',
-           'UED:USR:MMN:03:03', None, 'mm', LIKELY, 'run-7 list'),
-    _value('sample2_z', 'sample', '2nd SUED sample stage Z', None, None,
-           'mm', UNMAPPED, 'run-7 list says MMN:03:04, which is also the '
-           'pump long delay'),
-    _motor('sample2_pitch', 'sample', '2nd SUED sample stage pitch',
-           'UED:USR:MMN:03:01', None, 'deg', LIKELY, 'run-7 list'),
-    _motor('sample2_yaw', 'sample', '2nd SUED sample stage yaw',
-           'UED:USR:MMN:03:08', None, 'deg', LIKELY, 'run-7 list'),
+    # 2nd chamber sample stage, XPS-13 (Fuhao, 2026-10-28). The run-7 list's
+    # "2nd SUED stage" on XPS-03 and THz motors on XPS-13 were stale; MMN:03:04
+    # is only the pump long delay.
+    _motor('sample2_x', 'sample', '2nd chamber sample stage X',
+           'UED:USR:MMN:13:01', None, 'mm', CONFIRMED),
+    _motor('sample2_y', 'sample', '2nd chamber sample stage Y',
+           'UED:USR:MMN:13:06', None, 'mm', CONFIRMED),
+    _motor('sample2_z', 'sample', '2nd chamber sample stage Z',
+           'UED:USR:MMN:13:03', None, 'mm', CONFIRMED),
+    _motor('sample2_pitch', 'sample', '2nd chamber sample stage pitch',
+           'UED:USR:MMN:13:04', None, 'deg', CONFIRMED),
+    _motor('sample2_yaw', 'sample', '2nd chamber sample stage yaw',
+           'UED:USR:MMN:13:05', None, 'deg', CONFIRMED),
+    _motor('pump2_incoupling', 'laser', '2nd chamber pump incoupling mirror',
+           'UED:USR:MMN:13:02', None, 'mm', CONFIRMED),
+    _motor('pump2_outcoupling', 'laser',
+           '2nd chamber pump outcoupling mirror', 'UED:USR:MMN:13:07', None,
+           'mm', CONFIRMED),
 
     # THz line (run-7 list)
     _motor('thz_delay', 'thz', 'THz delay stage', 'UED:USR:MMN:06:08', None,
-           'mm', LIKELY, 'run-7 list'),
-    _motor('thz_parabola_y', 'thz', 'THz parabola mirror Y',
-           'UED:USR:MMN:13:02', None, 'mm', LIKELY, 'run-7 list'),
-    _motor('thz_parabola_x', 'thz', 'THz parabola mirror X',
-           'UED:USR:MMN:13:03', None, 'mm', LIKELY, 'run-7 list'),
-    _motor('thz_stage_x', 'thz', 'THz stage X', 'UED:USR:MMN:13:04', None,
-           'mm', LIKELY, 'run-7 list'),
-    _motor('thz_stage_y', 'thz', 'THz stage Y', 'UED:USR:MMN:13:05', None,
-           'mm', LIKELY, 'run-7 list'),
-    _motor('thz_stage_z', 'thz', 'THz stage Z', 'UED:USR:MMN:13:06', None,
            'mm', LIKELY, 'run-7 list'),
     Channel('thz_cross', 'thz', 'THz chamber camera e-beam cross X, Y',
             'UED:GIGE:12:Cross2X',
