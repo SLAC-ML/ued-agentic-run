@@ -103,8 +103,9 @@ Notes per stage:
   (`bsa.check.threshold_crossing_deg` gives both). The stage stops for an
   operator, with PREQ put back, if the 98 % interval is wider than
   `bsa_max_width_deg` or the measured charge disagrees with the onset;
-  then rerun with the default `method='grid'`. It hasn't been tried on a
-  real UED scan yet: use `grid` unless the operator asks for BSA.
+  then rerun with the default `method='grid'`. Its models (`bsa_full_v2`)
+  were trained for FACET-II's gun-phase scans, not UED's: on UED use
+  `grid`, and offer BSA only as an experiment the operator asks for.
 - **3.** After the fine tune, walk the operator through `handoff`: teach the
   loop at 10 fC ("set low charge") and 30 fC ("set high charge"), then
   "start feedback". From then on the loop owns the UV throttle: don't run
@@ -134,6 +135,14 @@ Notes per stage:
   say they're off, tell the operator the suggested values before rerunning
   with `y_shift=` / `y_scale=`. Use `grid` unless the operator asks for
   BOED.
+- **8, on the real machine.** The deployed tools stop at the first write, and
+  they can't run on ued-daq. The operator runs the same stage there:
+  `/sdf/group/mli/zhezhang/ued/agentic/scripts/ued_stage.sh find_time_zero
+  method=boed` is a dry run (writes logged, none sent; do it first), and
+  `--write` runs it for real. Arguments go as key=value (`y_shift=3.5`,
+  `n_points=80`, `center_mm=200`). Give the operator that command instead of
+  writing a new script. It needs taught `yag` and `bi` positions and the
+  pump overlap from stage 6 (it re-checks it first).
 - **8, while it runs.** A scan takes 20-35 min. The tool sends a progress
   message per point (delay, Delta I/I, the t0 estimate so far). The first
   message names the record folder, which fills from the start:

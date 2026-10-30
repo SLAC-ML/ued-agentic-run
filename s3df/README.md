@@ -38,6 +38,19 @@ They are deployed to `/sdf/group/mli/zhezhang/ued/agentic/scripts/`
 
 On ued-daq the `ued` environment writes its knobs (solenoids, correctors, sample x/y) and nothing else, inside the safety ranges of `config/ued_setup.yaml`. It logs every write to `badger/ued_writes.jsonl`. Anywhere else it is read-only. Badger reads its settings from `~/.config/config.yaml`, and the shared home's copy points at the LCLS plugins, so the launcher gives Badger a home of its own (`badger/gui/home`) with the UED settings.
 
+## Bring-up stages for operators on ued-daq
+
+`ued_stage.sh` runs a `ued_tuning` stage on ued-daq with the same code the agent's tools rehearse (`bringup/run_stage.py`). Stage 8, `find_time_zero`, is the one it runs for now.
+
+    S=/sdf/group/mli/zhezhang/ued/agentic/scripts
+    $S/ued_stage.sh find_time_zero method=boed            # dry run: every write logged, none sent
+    $S/ued_stage.sh --write find_time_zero method=boed    # for real (ued-daq only)
+
+- **Dry run** (the default): later reads of a "written" channel return the written value, so the sequence goes on, while cameras and the Andor are read for real and waits are cut to a tenth.
+- **`--write`:** writes only the channels the stage may write (`STAGE_WRITES` in `run_stage.py`), inside the setup file's safety ranges.
+
+Both log every write to `records/operator_writes.jsonl`. Stage arguments go as `key=value` (`y_shift=3.5`, `n_points=80`, `center_mm=200`).
+
 ## Running
 
 Environment (GPT on `PATH`, `GPTLICENSE`, Python env):

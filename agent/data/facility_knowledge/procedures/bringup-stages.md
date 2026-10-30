@@ -29,3 +29,4 @@ Each stage is one tool of the `ued_tuning` server. Before any beam stage (2-8), 
 - **3.** 10 fC on the scope is -1.7 mV below baseline (`scope.mV_per_fC: -0.17`). Teach the loop at 10 fC ("set low charge") and 30 fC ("set high charge").
 - **4.** Camera views (full view, e-beam, laser) set exposure, gain and the chamber light: references/setup-file. The e-beam cross is moved to the beam only if it is within `cross.max_move_px`.
 - **6-8.** The pump energy comes from the Harmonics HWP: references/pump-hwp-calibration. Coarse time zero is expected near 200 mm on the pump long delay.
+- **8.** The signal is the Bi Delta I/I at a ring from Andor frames, pump ON/OFF/OFF/ON. `method='boed'` runs the April 2026 amortized delay scan: procedures/time-zero.

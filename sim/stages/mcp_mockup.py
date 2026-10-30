@@ -45,6 +45,10 @@ CAMPAIGN = [
     # the operator approves the pattern and the tuned spot becomes 'bi'
     ('save_position', {'name': 'bi', 'note': 'mock-up: stage 7, approved'}),
     ('find_time_zero', {}),
+    # stage 8 again with the amortized BOED scan (am_boed). The virtual
+    # UED's drop is ~14 %, three times April's: y_scale brings it near the
+    # 4.4 % the models were trained on
+    ('find_time_zero', {'method': 'boed', 'y_scale': 0.3}),
 ]
 
 

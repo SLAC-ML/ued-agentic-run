@@ -84,6 +84,8 @@ Models saved by policy-boed (`outputs/bsa_full_v2`, `outputs/two_bunch_full_cpu`
 
 ## In the UED bring-up tools
 
+**These Schottky models are FACET-II's.** `bsa_full_v2` was built for FACET-II's gun-phase (Schottky) scans. The recorded scans it was checked on carry charges in pC, where UED's are in fC. It has not been trained for UED. On UED, stage 2 uses `method='grid'`; `method='bsa'` stays an experiment. The UED models are the stage-8 delay models below.
+
 Stage 2 of `ued_tuning` (`schottky_scan`, [bringup/README.md](../bringup/README.md)) runs the BSA protocol with `method='bsa'`, on the `bsa_full_v2` models. The agent's Python has no torch, so after every scan the stage runs `ued_t0.py` in `UED_BOED_PYTHON` (default: the AgenticOpt venv on S3DF) with the points so far, and gets back the T0 posterior and the next scan. The models are a copy of `policy-boed/outputs/bsa_full_v2` in `/sdf/group/mli/zhezhang/ued/agentic/boed/models/bsa_full_v2` (`UED_BOED_MODEL_DIR`), so they don't change under the tools.
 
 The model's frame is placed on the gun phase setpoint: `PREQ = centre + x`, with `x` in [T_MIN, T_MAX] and the charge rising with `x` past T0, as on UED. The centre is the edge of the stage's coarse 5° scan, or `onset_guess_deg` + 8°. The scan points are plain grids (no jitter). The stage takes the posterior median as the emission phase. It stops for an operator, and puts PREQ back, if the 98 % interval is wider than `bsa_max_width_deg` (4°), or if the measured charge disagrees with it. The second check requires the points 4–12° below T0 to sit under the scope's detection threshold and the points 4–12° above it to sit over it.

@@ -368,7 +368,8 @@ async def schottky_scan(coarse_step_deg: float = 5.0,
             fine_step_deg around the edge) or 'bsa' (Sam Klein's amortized
             T0 posterior: four 10-point scans in a 70 deg window, each
             placed by the posterior so far; the reply's `bsa` holds the
-            posterior after every scan).
+            posterior after every scan). The BSA models were trained for
+            FACET-II's gun-phase scans, not UED's: use 'grid' on UED.
         onset_guess_deg: with method='bsa', the PREQ where emission is
             expected to start (e.g. the last run's emission phase, within
             ~10 deg); skips the coarse scan.
