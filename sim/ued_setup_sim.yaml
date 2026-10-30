@@ -66,6 +66,23 @@ time_zero:
   boed_max_width_mm: 0.5
   check_margin_mm: 0.5
   boed_param_bounds_ps: null
+  eig_window_mm: [40.0, 80.0]
+  eig_n_points: 30
+  eig_grid_steps: 10
+  eig_max_width_mm: 0.5
+  eig_priors:                     # the virtual drop: ~14 %, a step, baseline 0
+    t0_mm: [60.0, 10.0]
+    a1: [10.0, 3.0]
+    tau1_ps: [0.1, 0.1]
+    a2: [4.0, 2.0]
+    tau2_ps: [1.0, 1.0]
+    baseline: [0.0, 0.5]
+    irf_ps: [0.3, 0.2]
+  eig_noise_prior: [-0.7, 0.75]
+  eig_margin_mm: 0.5
+  eig_candidates: 1000
+  eig_train_steps: 3000
+  eig_starts: 5
 
 collimator:
   out_mm: 0.0

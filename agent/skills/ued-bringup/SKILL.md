@@ -133,13 +133,16 @@ Notes per stage:
   ~4.4 %. `boed_y_shift` and `boed_y_scale` adjust for that, and
   `boed.check` suggests values from the first grid points. If its notes
   say they're off, tell the operator the suggested values before rerunning
-  with `y_shift=` / `y_scale=`. Use `grid` unless the operator asks for
-  BOED.
+  with `y_shift=` / `y_scale=`. `method='eig'` is the non-amortized BOED:
+  30 points, the posterior refit at each (~15 s of computing a point, so
+  ~20 min in all), no y_shift/y_scale to set; its priors are
+  `time_zero.eig_priors`. Use it if `boed` is refused or its notes say the
+  models don't fit. Use `grid` unless the operator asks for BOED.
 - **8, on the real machine.** The deployed tools stop at the first write, and
   they can't run on ued-daq. The operator runs the same stage there:
   `/sdf/group/mli/zhezhang/ued/agentic/scripts/ued_stage.sh find_time_zero
   method=boed` is a dry run (writes logged, none sent; do it first), and
-  `--write` runs it for real. Arguments go as key=value (`y_shift=3.5`,
+  `--write` runs it for real. `method=eig` runs the same way. Arguments go as key=value (`y_shift=3.5`,
   `n_points=80`, `center_mm=200`). Give the operator that command instead of
   writing a new script. It needs taught `yag` and `bi` positions and the
   pump overlap from stage 6 (it re-checks it first).

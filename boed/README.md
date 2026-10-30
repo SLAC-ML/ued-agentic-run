@@ -45,6 +45,8 @@ Training is the same loop for both. Each round simulates 1M trajectories under t
 | `ued_t0.py` | One BSA step for the UED tools: the T0 posterior after the scans so far and the next scan (JSON in, JSON out) |
 | `ued_delay_t0.py` | One step of the delay-stage time-zero scan (stage 8, below): the pump-probe t0 posterior after the points so far and the next delay |
 | `models/delay_t0_2026-04/` | The 2026-04 posterior-sampling delay models it uses (7 files, ~2.2 MB) |
+| `delay_eig.py` | Non-amortized BOED for the same task: `DelayEIGGenerator`, an Xopt generator (needs pyro-ppl and xopt) |
+| `ued_delay_eig.py` | One step of it for the UED tools (JSON in, JSON out) |
 
 ## Running
 
@@ -132,4 +134,26 @@ Checked on 2026-10-30:
 - **Synthetic Andor ring images** shaped like the April data (t0 189.07 mm, baseline −3.5 %): the ring centre came out within 0.003 px. BOED gave t0 = 189.075 mm (interval 0.33 mm). The grid method gave 189.070 mm.
 
 The models only worked on drops near April's. Check `y_scale` against the first grid points of a run before trusting it on a new sample or pump energy. On the real machine the deployed tools are read-only, so the stage stops at its first write until writes are allowed.
+
+### Non-amortized BOED (`method='eig'`)
+
+The other method run in April: Ryan Roussel's `BOED_t_zero/boed.py` (a pyro posterior fit by SVI, and the expected information gain from `marginal_eig` at 1000 candidate delays) on Dylan Kennedy's model from `boed_double_exp_2-stage.ipynb`. The model is an IRF-convolved double-exponential drop at t0 plus a baseline, seven parameters with Normal priors. Here it is `delay_eig.DelayEIGGenerator`, a plain Xopt `Generator`: grid points first, then the delay of highest EIG. It runs in an Xopt loop as it is (`X.step()`). Stage 8 calls it once per point through `ued_delay_eig.py`, stateless, and passes the last fit back as a warm start. April's `BayesianGenerator` base no longer validates in current Xopt (it requires an objective), hence the plain `Generator`.
+
+It changes the April code in four ways:
+
+- **No double counting:** every fit starts from the original priors and conditions on all the data once. April used the previous posterior as the next prior and conditioned on all the data again, counting each point once per step.
+- **Learned noise:** the noise is learned, with a LogNormal prior of median 0.5 % (`eig_noise_prior`). The EIG's marginal guide uses the fitted noise. April pinned the noise near 0.135 % and the guide used 0.05. Together with the double counting, that gave a t0 std of 8 µm after 30 April points.
+- **Multi-start fit:** the step in t0 makes SVI stick where it starts. A cold start from the 190 ± 10 mm prior gave t0 189.4 ± 4.2 mm and a fitted noise of 2.2 %. April got away with it because the carried-forward posterior also served as the starting point. Each fit now makes short runs from several t0 starts (the last fit, the data's change point, `eig_starts` points across the window) and finishes the best one.
+- **Candidates near t0 (a heuristic):** the next point is chosen among delays within the t0 posterior's 98 % interval widened by `eig_margin_mm` (0.5 mm). Within that range it is the EIG maximum, but this is not t0-targeted BOED, and not April's design. `marginal_eig` has no nuisance parameters: its EIG is about all seven. With the noise learned, over the whole window it measured at the far end for the decay tail once t0 was known. April's points stayed near t0 only because its pinned noise and overconfident posterior made t0 look the most uncertain. `eig_margin_mm: null` restores April's whole-window design. A t0-targeted EIG, with the other six parameters marginalized (`posterior_eig` with an amortized guide, or `vnmc_eig`), is the principled fix and is not done yet.
+
+The posterior is mean-field Normal, which tends to understate the width.
+
+Checked on 2026-10-30:
+
+- **April standard-BOED run** (`boed_data_after_20_iterations.csv`, 30 points): t0 = 190.03 ± 0.80 mm after the 10-point grid, 189.007 ± 0.020 mm after 20 points, 189.019 ± 0.012 mm after 30, with a fitted noise of 0.52 %. The amortized models gave 189.06–189.18 mm on the April amortized runs.
+- **Xopt loop on an April-like synthetic signal** (t0 189.07 mm, noise 0.6 %, 30 points, 3 seeds): t0 = 189.059, 189.074 and 189.069 mm (std 13–18 µm, ~90–120 fs). Each 98 % interval contained the truth, and the fitted noise was 0.54–0.80 %.
+- **Stage 8 end to end** (`find_time_zero(method='eig')`, stand-ins for the machine, 30 points, accepted both times):
+  - Synthetic Andor ring images shaped like April (t0 189.07 mm, little noise): t0 = 189.069 mm.
+  - An analytic erf step in the virtual UED's frame (drop toward higher delay, 14 %, t0 61.234 mm): t0 = 61.218 mm. That is 0.016 mm (~0.1 ps) off, outside its 98 % interval (std 15 fs). Part of it is definition: the model's t0 is where the drop starts, the erf's is its midpoint. Part of it is the mean-field posterior. The interval widths are not accuracies.
+- **Cost:** ~15 s of computing per point on a laptop CPU (fits plus EIG), against ~26 s to measure one. 30 points take ~20 min.
 
