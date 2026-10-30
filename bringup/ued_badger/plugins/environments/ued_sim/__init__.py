@@ -1,8 +1,11 @@
-"""Badger environment ued_sim: the virtual UED after stage 5.
+"""Badger environment ued_sim: the virtual UED, for rehearsal.
 
-Knobs Sol1, Sol2, XC/YC00-02 and XC/YC04, bounded by the safety ranges of
-the sim setup file; observables from the Andor spot. The logic lives in
-bringup/ued_badger/envcore.py, shared with the real-machine environment ued.
+Knobs Sol1, Sol2, XC/YC00-02, XC/YC04 and the sample x/y, bounded by the
+safety ranges of the sim setup file; observables from the Andor. preset
+stage5 starts after stage 5 (sample out); stage7 at the Bi sample with the
+main beam in the Andor through hole and the diffraction settings. The logic
+lives in bringup/ued_badger/envcore.py, shared with the real-machine
+environment ued.
 """
 import os
 import sys
@@ -24,9 +27,12 @@ class Environment(environment.Environment):
     n_avg: int = Field(3, description='Andor readings averaged per point')
     settle_s: float = Field(1.0, description='wait after setting knobs [s]')
     seed: int = Field(0, description='simulator noise seed')
+    preset: str = Field('stage5', description='stage5 (after the '
+                        'collimator, sample out) or stage7 (at the Bi '
+                        'sample, main beam in the through hole)')
 
     def _m(self):
-        return envcore.machine(self.name, self.seed)
+        return envcore.machine(self.name, self.seed, self.preset)
 
     def get_bounds(self, variable_names):
         bounds = common.knob_bounds(self.name)   # the setup file, fresh

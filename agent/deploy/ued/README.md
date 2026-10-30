@@ -132,6 +132,15 @@ Three MCP servers, all reusing `bringup/` from the ued-agentic-run repo, deploye
   The wrapper forces the `epics` backend, which reads with `caget` and refuses every write before any EPICS call, so each tool that writes stops at its first write. Read-only tools run unprompted; every tool that writes asks first. The positions, setpoints and safety ranges come from `/sdf/group/mli/zhezhang/ued/agentic/config/ued_setup.yaml`. The simulator backend isn't offered here: rehearsals run on S3DF (`sim/stages/mcp_mockup.py`), not on the DAQ machine.
 - `ued_badger` (`mcp_servers/ued_badger_mcp`, a wrapper around `bringup/ued_badger`) has the Badger routines for the optimization after the collimator. Its tools are `badger_info`, `draft_routine`, `list_routines`, `run_routine`, `poll_run`, `stop_run`, `run_result`, `list_runs` and `reset_sim`. Drafting validates a routine in Badger itself and reads where the machine is now. Runs are headless and budgeted, and only on the simulator (`ued_sim`). Routines for the real machine (`ued`) are checked read-only, and an operator runs them in Badger. The server never imports Badger: it calls the AgenticOpt venv (`UED_BADGER_PYTHON`) as subprocesses. `run_routine` and `reset_sim` ask; the rest run unprompted.
 
+## Panels
+
+Besides WORKSPACE (the artifact gallery), the web terminal has two tabs since 2026-10-30. Both are local processes behind the terminal's own proxy, so no container and no extra port forward:
+
+- KNOWLEDGE: the UED knowledge bundle in `data/facility_knowledge`, also read by the `osprey_facility_knowledge` MCP server. It has an overview, devices, procedures, references and physics. The device pages are generated from the channel map (`bringup/okf_devices.py`). After editing, push `agent/data/` and run `build/.venv/bin/osprey knowledge regen-index data/facility_knowledge` and `... knowledge validate ...`.
+- JUPYTER: JupyterLab, started by the terminal on a port of its own. Notebooks live in `var/agent_data/notebooks`. From S3DF the gateway refuses writes, so a notebook can read PVs but not set them.
+
+The hello_world template renders no `web.panels` blocks, so `profile.yml` declares them (`web.panels.okf.enabled`, `web.panels.jupyter.enabled`) beside `web_panels`. A running web terminal picks up new tabs only after a restart.
+
 ## Skills
 
 `skills/` holds the UED skills; the build copies them into `build/.claude/skills/`:

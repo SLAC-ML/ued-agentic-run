@@ -16,8 +16,10 @@ This server runs in the agent's Python and never imports Badger: validation
 and runs happen in $UED_BADGER_PYTHON, the venv with the Badger fork. Only
 the simulator (ued_sim) can be run; the real machine (ued) is read-only on
 this deployment, so its routines are drafted and checked against the live
-values, and an operator runs them in Badger. Runs are archived in Badger's
-archive, where the Badger GUI finds them.
+values, and an operator runs them in Badger on ued-daq
+(scripts/badger_ued.sh run <routine>), the only place the `ued` environment
+writes. Runs are archived in Badger's archive, where the Badger GUI finds
+them.
 
 Launched over stdio by ``python -m ued_badger`` (PYTHONPATH = bringup/).
 """
@@ -39,6 +41,11 @@ SIM_ENV_SH = os.environ.get('UED_SIM_ENV_SH',
                             '/sdf/group/mli/zhezhang/ued/agentic/scripts/'
                             'env.sh')
 RUNNABLE = ('ued_sim',)
+LAUNCHER = '/sdf/group/mli/zhezhang/ued/agentic/scripts/badger_ued.sh'
+OPERATOR_HINT = (f'on ued-daq an operator runs: {LAUNCHER} run <routine '
+                 'path>. The Badger GUI opens with the routine loaded; the '
+                 'operator checks the ranges against the current values and '
+                 'presses Run. Add --dry-run to log the writes instead.')
 MAX_EVALUATIONS, MAX_MINUTES = 200, 120
 GENERATORS = {
     'expected_improvement': 'Bayesian, single objective, takes '
@@ -121,16 +128,19 @@ def _active_runs():
 mcp = FastMCP(
     'ued_badger',
     instructions=(
-        'Badger optimization routines for the UED co-tuning after the '
-        'collimator: Sol1, Sol2, XC/YC00-02 (and XC/YC04 to keep the beam '
-        'centred) against the Andor spot. Flow: badger_info -> '
+        'Badger optimization routines for UED: the co-tuning after the '
+        'collimator (stage 5: Sol1, Sol2, XC/YC00-02, XC/YC04 against the '
+        'Andor spot) and the sample position (stage 7: sample_x/y against '
+        'the Andor diffraction intensity, andor_frame_sum). Flow: '
+        'badger_info -> '
         'draft_routine (validated in Badger, ranges from the safety ranges, '
         'reads where the machine is now) -> run_routine (simulator only; '
         'budgeted, detached) -> poll_run until finished -> run_result. '
         'stop_run stops after the current evaluation. A run puts the knobs '
         "back at the start unless on_finish='best'. The real machine "
         "(environment 'ued') is read-only here: draft and check routines on "
-        'it, and hand them to an operator to run in Badger.'),
+        'it, then give the operator the command in the reply (Badger on '
+        'ued-daq with the routine loaded). Never claim it ran.'),
 )
 
 
@@ -158,13 +168,23 @@ async def badger_info() -> str:
                                            'centre [px]',
             'andor_sigma_x_px': 'rms width [px]',
             'andor_sigma_y_px': 'rms height [px]',
-            'andor_saturated': '1 if a pixel is at full scale'},
+            'andor_saturated': '1 if a pixel is at full scale',
+            'andor_frame_sum': 'background-subtracted counts over the '
+                               'whole frame: the diffracted intensity with '
+                               'the main beam in the through hole (stage 7)'},
         'generators': GENERATORS,
         'routines_dir': str(common.ROUTINES_DIR),
         'runs_dir': str(common.RUNS_DIR),
         'archive': str(common.ARCHIVE_ROOT),
-        'sim_state': str(common.SIM_STATE) if common.SIM_STATE.exists()
-        else 'none: the simulator starts from the state after stage 5',
+        'sim_state': [p.name for p in sorted(
+            common.ROOT.glob('ued_sim_state*.json'))] or
+        'none: the simulator starts from its preset',
+        'sim_presets': {'stage5': 'after stage 5: sample out, Andor at the '
+                                  'check settings (spot optimization)',
+                        'stage7': 'at the Bi sample, main beam in the '
+                                  'through hole, Andor at the diffraction '
+                                  'settings (sample position)'},
+        'operator_on_ued_daq': OPERATOR_HINT,
         'active_runs': _active_runs(),
         'budget_caps': {'max_evaluations': MAX_EVALUATIONS,
                         'max_minutes': MAX_MINUTES},
@@ -181,7 +201,7 @@ async def draft_routine(name: str, variables: list[str] | dict,
                         generator: str = 'expected_improvement',
                         generator_params: dict | None = None,
                         span_fraction: float = 0.1, n_avg: int = 3,
-                        settle_s: float = 1.0,
+                        settle_s: float = 1.0, sim_preset: str = 'stage5',
                         description: str = '') -> str:
     """Write a Badger routine, validated against its environment.
 
@@ -197,7 +217,9 @@ async def draft_routine(name: str, variables: list[str] | dict,
         variables: knob names (each gets current +/- span_fraction of its
             safety range, clipped to it), or {knob: [lo, hi]}, or
             {knob: null} for the automatic range. Knobs: sol1, sol2,
-            xc00, yc00, xc01, yc01, xc02, yc02, xc04, yc04.
+            xc00, yc00, xc01, yc01, xc02, yc02, xc04, yc04 (stage 5),
+            sample_x, sample_y (stage 7; each only where the setup file
+            gives it a safety range).
         objectives: {observable: "MINIMIZE" | "MAXIMIZE"}, e.g.
             {"andor_spot_size_px": "MINIMIZE"}.
         constraints: {observable: ["GREATER_THAN" | "LESS_THAN", value]},
@@ -211,6 +233,8 @@ async def draft_routine(name: str, variables: list[str] | dict,
             knob's safety range.
         n_avg: Andor readings averaged per point.
         settle_s: wait after setting the knobs [s].
+        sim_preset: for ued_sim, stage5 (after the collimator, sample out)
+            or stage7 (at the Bi sample, main beam in the through hole).
         description: what the routine is for.
     """
     _name_ok(name)
@@ -219,7 +243,9 @@ async def draft_routine(name: str, variables: list[str] | dict,
     routine = {
         'name': name, 'description': description,
         'environment': {'name': environment, 'n_avg': int(n_avg),
-                        'settle_s': float(settle_s)},
+                        'settle_s': float(settle_s),
+                        **({'preset': sim_preset}
+                           if environment == 'ued_sim' else {})},
         'generator': {'name': generator, **(generator_params or {})},
         'vocs': {'variables': variables, 'objectives': objectives,
                  'constraints': constraints or {},
@@ -249,8 +275,9 @@ async def draft_routine(name: str, variables: list[str] | dict,
         report['path'] = str(dest)
         report['runnable'] = environment in RUNNABLE
         if environment not in RUNNABLE:
-            report['next'] = ('an operator runs it in Badger; this '
-                              'deployment cannot write to the real machine')
+            report['next'] = ('this deployment cannot write to the real '
+                              'machine; ' + OPERATOR_HINT.replace(
+                                  '<routine path>', str(dest)))
     report['environment'] = environment
     return json.dumps(report)
 
@@ -310,7 +337,8 @@ async def run_routine(name: str, max_evaluations: int = 30,
     if env not in RUNNABLE:
         return json.dumps({'ok': False, 'reason': (
             f'{name} is for {env!r}: this deployment cannot write to the '
-            'real machine. An operator can load the routine file in Badger.'),
+            'real machine. ' + OPERATOR_HINT.replace('<routine path>',
+                                                    str(path))),
             'path': str(path)})
     if on_finish not in ('start', 'best', 'stay'):
         return json.dumps({'ok': False, 'reason': 'on_finish is start, '
@@ -407,13 +435,12 @@ async def list_runs(limit: int = 10) -> str:
 
 @mcp.tool()
 async def reset_sim() -> str:
-    """Put the simulator's knobs back to the state after stage 5 (forget
-    what earlier runs left), for a fresh rehearsal."""
+    """Put the simulator's knobs back to its presets (forget what earlier
+    runs left), for a fresh rehearsal."""
     if _active_runs():
         return json.dumps({'ok': False, 'reason': 'a run is active'})
-    try:
-        common.SIM_STATE.unlink()
-        return json.dumps({'ok': True, 'reset': True})
-    except FileNotFoundError:
-        return json.dumps({'ok': True, 'reset': False,
-                           'note': 'already at the stage-5 state'})
+    gone = []
+    for f in common.ROOT.glob('ued_sim_state*.json'):
+        f.unlink()
+        gone.append(f.name)
+    return json.dumps({'ok': True, 'reset': gone or 'already at the presets'})

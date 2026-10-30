@@ -2,10 +2,12 @@
 name: ued-badger
 description: >
   Draft, check, run and read back Badger optimization routines for the UED
-  (Sol1, Sol2, XC/YC00-02, XC/YC04 against the Andor spot) with the
-  ued_badger tools. Use when the operator asks to set up or rehearse a
-  Badger routine, to run an optimization on the simulator, to follow or stop
-  a run, or to prepare a routine for the real machine.
+  with the ued_badger tools: the co-tuning after the collimator (stage 5:
+  Sol1, Sol2, XC/YC00-04 against the Andor spot) and the sample position
+  (stage 7: sample x/y against the Andor diffraction intensity). Use when the
+  operator asks to set up or rehearse a Badger routine, to run an
+  optimization on the simulator, to follow or stop a run, or to prepare a
+  routine for the operator to run in Badger on ued-daq.
 summary: Badger routines for UED with the ued_badger tools (sim runs, real-machine drafts)
 ---
 
@@ -16,13 +18,26 @@ Badger itself, and runs it headless with a budget. Two environments:
 
 | Environment | What it is | Runnable here |
 |---|---|---|
-| `ued_sim` | the virtual UED (GPT), starting from the state after stage 5; its knobs persist between runs | yes |
-| `ued` | the real machine, through EPICS (with the gateway prefix from S3DF) | **no**: read-only. Draft and check only; an operator runs the routine in Badger |
+| `ued_sim` | the virtual UED (GPT); `sim_preset` stage5 (after the collimator, sample out) or stage7 (at the Bi sample, main beam in the Andor through hole, diffraction settings); its knobs persist between runs | yes |
+| `ued` | the real machine through EPICS | **no**: read-only here. Draft and check; the operator runs it in Badger on ued-daq |
 
-Knobs (logical names, units as `ued_tuning` reports them): `sol1`, `sol2`,
-`xc00`, `yc00`, `xc01`, `yc01`, `xc02`, `yc02`, `xc04`, `yc04`. Observables:
-`andor_spot_size_px`, `andor_total`, `andor_offset_from_centre_px`,
-`andor_sigma_x_px`, `andor_sigma_y_px`, `andor_saturated`.
+Knobs (logical names, units as `ued_tuning` reports them): stage 5 `sol1`,
+`sol2`, `xc00`, `yc00`, `xc01`, `yc01`, `xc02`, `yc02`, `xc04`, `yc04`;
+stage 7 `sample_x`, `sample_y`. A knob exists only where the setup file
+gives it a safety range (`badger_info` lists them per environment).
+Observables: `andor_spot_size_px`, `andor_total`,
+`andor_offset_from_centre_px`, `andor_sigma_x_px`, `andor_sigma_y_px`,
+`andor_saturated`, and `andor_frame_sum` (counts over the whole frame: the
+diffracted intensity, with the main beam in the through hole).
+
+Typical routines:
+- **Stage 5b, spot size:** minimize `andor_spot_size_px` over the magnets,
+  constraint `andor_total` GREATER_THAN ~0.8 x now (expected_improvement).
+- **Stage 7, sample position:** maximize `andor_frame_sum` over `sample_x`,
+  `sample_y` within ~0.15 mm of the taught position, constraint
+  `andor_saturated` LESS_THAN 0.5. The main beam must be in the through hole
+  first (`tune_sample_position` does that) and the Andor at its diffraction
+  settings.
 
 ## Steps
 
@@ -53,8 +68,14 @@ Knobs (logical names, units as `ued_tuning` reports them): `sol1`, `sol2`,
    percent, where the knobs were left, the archive file (the Badger GUI can
    open it).
 7. For the real machine: `draft_routine(..., environment='ued')` against the
-   live values, then give the operator the routine path to load in Badger.
-   Never claim it ran.
+   live values. The reply's `next` has the operator's command; pass it on:
+   on ued-daq, `/sdf/group/mli/zhezhang/ued/agentic/scripts/badger_ued.sh
+   run <routine path>` opens the Badger GUI with the routine loaded. The
+   operator checks the ranges against the current values and presses Run;
+   `--dry-run` first logs the writes without sending them. Writes happen only
+   there, to the knobs, inside the safety ranges, each logged to
+   `badger/ued_writes.jsonl`. Never claim it ran; afterwards the run is in
+   the Badger archive.
 
 ## Reading the results
 

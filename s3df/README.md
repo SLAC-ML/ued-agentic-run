@@ -26,6 +26,18 @@ They are deployed to `/sdf/group/mli/zhezhang/ued/agentic/scripts/`
     caget UED:USER:SIOC:AS01:KY03:0:AREQ          # gun amplitude setpoint
     uedget SIOC:AS01:KY03:0:AREQ SOLN:AS01:121:BCTRL UED:USR:MMN:14:07
 
+## Badger for operators on ued-daq
+
+`badger_ued.sh` starts Badger, the fork in the AgenticOpt venv on S3DF, which runs on ued-daq as is. It uses the UED environments (`bringup/ued_badger/plugins`: `ued` for the real machine, `ued_sim` for the simulator), the agent's routines as templates (`badger/routines`), and the shared archive (`badger/archive`).
+
+    S=/sdf/group/mli/zhezhang/ued/agentic/scripts
+    $S/badger_ued.sh run /sdf/group/mli/zhezhang/ued/agentic/badger/routines/<name>.yaml
+    $S/badger_ued.sh --dry-run run <routine>    # writes logged, not sent
+    $S/badger_ued.sh --read-only                # GUI, no writes
+    $S/badger_ued.sh env ued                    # knobs, ranges, observables
+
+On ued-daq the `ued` environment writes its knobs (solenoids, correctors, sample x/y) and nothing else, inside the safety ranges of `config/ued_setup.yaml`. It logs every write to `badger/ued_writes.jsonl`. Anywhere else it is read-only. Badger reads its settings from `~/.config/config.yaml`, and the shared home's copy points at the LCLS plugins, so the launcher gives Badger a home of its own (`badger/gui/home`) with the UED settings.
+
 ## Running
 
 Environment (GPT on `PATH`, `GPTLICENSE`, Python env):

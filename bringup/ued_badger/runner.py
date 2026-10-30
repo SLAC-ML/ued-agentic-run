@@ -88,8 +88,12 @@ class Run:
             return 'time budget reached'
         n = int(self.req.get('abort_after_no_beam', 3))
         tail = self.rows[-n:]
+        # only where the routine records the spot: at the sample (stage 7)
+        # the main beam is in the through hole on purpose
         if n and len(tail) == n and all(
-                r['outputs'].get('andor_spot_size_px') is None for r in tail):
+                'andor_spot_size_px' in r['outputs']
+                and r['outputs']['andor_spot_size_px'] is None
+                for r in tail):
             return f'no beam on the Andor for {n} evaluations in a row'
         return None
 
@@ -224,7 +228,7 @@ def finish(run, env, x0, vocs):
         done = f'FAILED to restore ({how}): {exc}'
     if env.name == 'ued_sim':
         from ued_badger import envcore
-        envcore.save_sim_state(envcore.machine('ued_sim'))
+        envcore.save_sim_state(env._m(), env.preset)
     return done
 
 

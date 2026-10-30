@@ -1,6 +1,6 @@
 ---
 name: ued
-description: "Real UED through EPICS, read-only: knob writes are refused on this deployment"
+description: "Real UED through EPICS: solenoids, correctors and sample x/y against the Andor; writes only from scripts/badger_ued.sh on ued-daq"
 version: "0.1"
 dependencies:
   - badger-opt

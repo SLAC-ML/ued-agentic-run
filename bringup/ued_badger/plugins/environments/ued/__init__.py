@@ -1,9 +1,12 @@
-"""Badger environment ued: the real UED, read-only.
+"""Badger environment ued: the real UED.
 
-Knobs Sol1, Sol2, XC/YC00-02 and XC/YC04, bounded by the safety ranges of
-the live setup file; observables from the Andor spot. Reads go through
-the CA settings and PV prefix (bringup/pv_access.py); every write is
-refused (ued_tuning's EpicsBackend). The logic is in ued_badger/envcore.py.
+Knobs Sol1, Sol2, XC/YC00-02, XC/YC04 and the sample x/y, each only where
+the live setup file gives it a safety range; observables from the Andor.
+Reads go through the CA settings and PV prefix (bringup/pv_access.py).
+Writes are refused (ued_tuning's EpicsBackend), except in an operator's
+Badger started by scripts/badger_ued.sh on ued-daq, which writes the knobs
+and logs every write (ued_badger/live.py). The logic is in
+ued_badger/envcore.py.
 """
 import os
 import sys

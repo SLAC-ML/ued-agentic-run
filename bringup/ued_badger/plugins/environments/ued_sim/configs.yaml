@@ -1,6 +1,6 @@
 ---
 name: ued_sim
-description: "Virtual UED (GPT beam transport) after stage 5: Sol1/Sol2 and correctors against the Andor spot"
+description: "Virtual UED (GPT beam transport): after stage 5 or at the Bi sample; solenoids, correctors and sample x/y against the Andor"
 version: "0.1"
 dependencies:
   - badger-opt

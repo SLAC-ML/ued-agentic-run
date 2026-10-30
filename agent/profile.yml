@@ -126,7 +126,12 @@ output_styles:
 #
 # and, under `config:`, web.panels.elog.url alongside web.panels.elog.label,
 # web.panels.elog.path and — optional — web.panels.elog.health_endpoint.
-web_panels: []   # Extra tabs in the web workspace, beside the terminal
+# DEVIATION: the KNOWLEDGE tab (OKF bundle at data/facility_knowledge) and the
+# JUPYTER tab. Both are local processes behind the web terminal's own proxy:
+# no containers and no extra port to forward.
+web_panels:   # Extra tabs in the web workspace, beside the terminal
+  - okf
+  - jupyter
   # Available — uncomment to enable:
   # - ariel  # ARIEL server
   # - channel-finder  # Channel Finder
@@ -309,6 +314,18 @@ config:
   # the terminal with refused-connection retries.
   # DEVIATION: the ariel web companion off (no logbook store on ued-daq).
   ariel.web.auto_launch: false
+  # The UED knowledge bundle (OKF Markdown): the KNOWLEDGE tab, the
+  # osprey_facility_knowledge MCP server and `osprey knowledge` all read it.
+  # Relative to the deployment root. Device pages are generated from the
+  # channel map (bringup/okf_devices.py); regenerate the indexes after edits
+  # with `osprey knowledge regen-index data/facility_knowledge`.
+  # DEVIATION: facility knowledge bundle for UED.
+  facility_knowledge.bundle_path: data/facility_knowledge
+  # The hello_world template renders no web.panels blocks, and the build only
+  # switches on blocks that exist: declare the two tabs web_panels selects.
+  # DEVIATION: web.panels blocks for the KNOWLEDGE and JUPYTER tabs.
+  web.panels.okf.enabled: true
+  web.panels.jupyter.enabled: true
   # Same stopgap as the LCLS deployment.
   # DEVIATION: the health block, provider check on demand (stopgap).
   health.categories.providers.cost: on_demand
