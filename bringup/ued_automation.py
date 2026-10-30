@@ -228,13 +228,20 @@ def save_position(name, coords, note='', path=None, extra=None) -> Path:
     return path
 
 
-def save_record(kind, data, arrays=None) -> str:
-    """A record folder under $UED_RECORDS_DIR: record.json plus arrays.npz
-    (camera images, scope traces). Returns the folder path."""
+def record_folder(kind) -> Path:
+    """A new, empty record folder under $UED_RECORDS_DIR."""
     root = Path(os.environ.get('UED_RECORDS_DIR', RECORDS_DEFAULT))
     stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]
     folder = root / f'{stamp}_{kind}'
     folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def save_record(kind, data, arrays=None, folder=None) -> str:
+    """A record folder under $UED_RECORDS_DIR (or `folder`, made earlier
+    by record_folder): record.json plus arrays.npz (camera images, scope
+    traces). Returns the folder path."""
+    folder = Path(folder) if folder else record_folder(kind)
     (folder / 'record.json').write_text(json.dumps(data, indent=1,
                                                    default=str))
     if arrays:

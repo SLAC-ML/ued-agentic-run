@@ -238,8 +238,9 @@ _LIST = [
     _ch('delay', 'pump_probe', 'mm', True, 'Pump long delay stage',
         'UED:USR:MMN:03:04', CONFIRMED),
     _ch('diffraction_signal', 'pump_probe', '', False,
-        'Bragg-peak intensity, normalised to pump-off. On the real machine, '
-        'the LCLS DAQ or the Run 6 BOED script', None, SIM_ONLY),
+        'Bragg-peak intensity (simulator only). On the real machine stage 8 '
+        'computes the Bi Delta I/I from cam_far_andor frames itself '
+        '(diffraction.py)', None, SIM_ONLY),
 ]
 
 # Cameras: one block of channels each. On the real machine the stats are

@@ -72,7 +72,7 @@ operator.
 | 5b | `plan_beam_optimization` | Stage 5 accepted | A VOCS for Badger (single objective with a constraint, or `multi_objective=true` as the proposal has it): see the ued-beam-optimization skill | the routine doesn't converge |
 | 6 | `overlap_pump_laser` | `pump.hwp_min_energy_deg` from the laser team | e-beam and laser both on the cross; pump shutter closed | e-beam off the cross; laser not seen |
 | 7 | `tune_sample_position` | Taught sample position (e.g. `bi`); `andor.through_hole_px` | Always escalates: the operator judges the pattern, then `save_position` | main beam not in the Andor through hole; saturation |
-| 8 | `find_time_zero` | Stage 6 overlap still good; `pump.hwp_pump_probe_deg` (~2 uJ) | t0 fitted | overlap check fails |
+| 8 | `find_time_zero` | Stage 6 overlap still good; `pump.hwp_pump_probe_deg` (~2 uJ); the `time_zero` section of the setup file | t0 found, delay left there | overlap check fails; no drop in the window; BOED t0 uncertain or disagrees with the signal |
 
 Notes per stage:
 
@@ -119,8 +119,27 @@ Notes per stage:
   crystal the symmetry is balanced with the sample pitch and yaw, which the
   tools don't move for now (stale IOC soft limits): ask the operator to set
   them by hand. Save the position only after the operator agrees.
-- **8.** On the real machine the delay scan runs in the LCLS DAQ or the Run 6
-  BOED script; the tool's erf-fit scan is a stand-in.
+- **8.** The signal is the Bi Delta I/I (%) at a ring, from Andor frames
+  taken pump ON, OFF, OFF, ON at each delay (Fuhao's April 2026
+  measurement). The default `method='grid'` zooms in on the drop around
+  `center_mm` (or the current delay) and fits an erf step.
+  `method='boed'` runs the April 2026 amortized BOED scan over
+  `time_zero.boed_window_mm`: 10 grid points, then 70 drawn from the t0
+  posterior, so about 35 min at ~26 s a point. t0 is the posterior median.
+  The stage stops for an operator, with the delay put back, if the 98 %
+  interval is wider than `boed_max_width_mm` or the signal disagrees.
+  The models expect the baseline before t0 at 0 and a drop near April's
+  ~4.4 %. `boed_y_shift` and `boed_y_scale` adjust for that, and
+  `boed.check` suggests values from the first grid points. If its notes
+  say they're off, tell the operator the suggested values before rerunning
+  with `y_shift=` / `y_scale=`. Use `grid` unless the operator asks for
+  BOED.
+- **8, while it runs.** A scan takes 20-35 min. The tool sends a progress
+  message per point (delay, Delta I/I, the t0 estimate so far). The first
+  message names the record folder, which fills from the start:
+  `live.jsonl`, one line per point, and `live.png`, the points so far with
+  t0. Tell the operator the folder at the start so they can watch the
+  plot. If the run is stopped, the points are still in `live.jsonl`.
 
 ## Camera views (sample chamber camera + chamber light)
 

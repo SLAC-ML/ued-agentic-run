@@ -36,6 +36,37 @@ pump:
   outcoupling_out_mm: 0.1
   outcoupling_in_mm: 24.0
 
+# The virtual UED's t0 is near 61 mm and its signal drops toward higher
+# delay (the real machine's is near 189 mm and drops toward lower); the
+# window puts it mid-range in the models' frame, as in April. Its signal is
+# analytic (no ring images), with the baseline at 0, so y_shift is 0 and the
+# image-analysis keys are unused.
+time_zero:
+  signal_drops_toward: higher
+  ring_s: 7.30
+  ring_half_width: 8
+  s_cal: 0.01924
+  hole_mask_px: [560, 470, 45]
+  corner_px: 30
+  ring_center_px: null
+  ring_search_px: {r_min: 80, r_max: 450, hole_radius: 50}
+  frame_wait_exposures: 2
+  n_avg: 1
+  move_s_per_mm: 0.12
+  settle_s: 1.0
+  min_drop_pct: 1.0
+  boed_window_mm: [40.0, 80.0]
+  boed_y_shift: 0.0
+  boed_y_scale: 0.3               # the virtual drop is ~14 %; the models want ~4.4
+  boed_reference_drop_pct: 4.4
+  y_shift_tolerance: 1.0
+  boed_n_points: 80
+  boed_grid_steps: 10
+  boed_block_size: 10
+  boed_max_width_mm: 0.5
+  check_margin_mm: 0.5
+  boed_param_bounds_ps: null
+
 collimator:
   out_mm: 0.0
   nominal_mm: 90.0

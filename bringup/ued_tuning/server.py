@@ -19,13 +19,14 @@ Launched over stdio by ``python -m ued_tuning`` (PYTHONPATH = bringup/).
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import os
 import sys
 import time
 
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 
 from . import stages
 from .channels import CHANNELS
@@ -73,6 +74,40 @@ def _call(name, fn, **kwargs):
     out['backend'] = BACKEND
     out['wall_s'] = round(time.time() - t0, 1)
     return json.dumps(stages._num(out))
+
+
+async def _call_with_progress(name, fn, ctx, **kwargs):
+    """_call in a worker thread, so the stage's progress events (one per
+    point of a long scan) reach the client while it runs: each becomes a
+    progress notification and an info log message. A client that sent no
+    progress token gets only the log messages; a failed message never stops
+    the stage."""
+    loop = asyncio.get_running_loop()
+
+    async def notify(ev):
+        msg = ev.get('message', '')
+        if ev.get('of'):
+            try:
+                await ctx.report_progress(ev.get('n', 0), ev['of'], msg)
+            except TypeError:               # FastMCP without `message`
+                with contextlib.suppress(Exception):
+                    await ctx.report_progress(ev.get('n', 0), ev['of'])
+            except Exception:
+                pass
+        with contextlib.suppress(Exception):
+            await ctx.info(msg, logger_name=name)
+
+    sent = []
+
+    def progress(ev):
+        sent.append(asyncio.run_coroutine_threadsafe(notify(ev), loop))
+
+    out = await asyncio.to_thread(_call, name, fn, progress=progress,
+                                  **kwargs)
+    for f in sent:                      # all messages out before the result
+        with contextlib.suppress(Exception):
+            await asyncio.wrap_future(f)
+    return out
 
 
 def _action(name, body):
@@ -414,16 +449,49 @@ async def tune_sample_position(sample: str = 'bi', span_mm: float = 0.15,
 
 
 @mcp.tool()
-async def find_time_zero(sample: str = 'bi', center_mm: float | None = None,
+async def find_time_zero(ctx: Context, sample: str = 'bi',
+                         method: str = 'grid',
+                         center_mm: float | None = None,
                          coarse_span_mm: float = 3.0,
-                         fine_span_mm: float = 0.3) -> str:
+                         fine_span_mm: float = 0.3,
+                         y_shift: float | None = None,
+                         y_scale: float | None = None,
+                         n_points: int | None = None,
+                         boed_max_width_mm: float | None = None) -> str:
     """Stage 8: verify the overlap on the YAG, go to the sample, pump HWP
-    to its ~2 uJ setpoint, open the pump shutter, scan the delay and fit
-    the Bragg-peak drop (a stand-in for the LCLS DAQ / BOED scan), close
-    the shutter."""
-    return _call('find_time_zero', stages.find_time_zero, sample=sample,
-                 center_mm=center_mm, coarse_span_mm=coarse_span_mm,
-                 fine_span_mm=fine_span_mm)
+    to its ~2 uJ setpoint, then measure the Bi pump-probe signal (Delta
+    I/I at a Bi ring from Andor frames, pump ON/OFF/OFF/ON) at a series of
+    pump delays and find where it drops (t0). Leaves the delay at t0; the
+    pump shutter closed. Hand-set values (ring, hole mask, scan window,
+    y_shift, ...) are in the setup file's time_zero section.
+
+    Args:
+        method: 'grid' (coarse scan of +-coarse_span_mm around center_mm or
+            the current delay, then finer scans, erf fit) or 'boed' (the
+            2026-04 amortized BOED: a 10-point grid over
+            time_zero.boed_window_mm, then points drawn from the t0
+            posterior; t0 = posterior median; the reply's `boed` has the
+            posterior after every point and a check against the signal).
+        y_shift: with method='boed', added to Delta I/I so the baseline
+            before t0 sits at 0, as the models expect. Default from the
+            setup file; the reply's boed.check suggests a value.
+        y_scale: with method='boed', then multiplied in, to bring the drop
+            near the ~4.4 % the models worked on in April (boed.check
+            suggests a value).
+        n_points: with method='boed', points per run (setup default 80).
+        boed_max_width_mm: with method='boed', stop for an operator (and
+            put the delay back) if t0's 98 % interval is wider than this.
+
+    While it runs, it sends a progress message per point (delay, Delta I/I,
+    the t0 estimate so far), and the record folder fills from the start:
+    live.jsonl (one line per point) and live.png. The first message names
+    the folder: pass it on to the operator.
+    """
+    return await _call_with_progress(
+        'find_time_zero', stages.find_time_zero, ctx, sample=sample,
+        method=method, center_mm=center_mm, coarse_span_mm=coarse_span_mm,
+        fine_span_mm=fine_span_mm, y_shift=y_shift, y_scale=y_scale,
+        n_points=n_points, boed_max_width_mm=boed_max_width_mm)
 
 
 if BACKEND == 'sim':
