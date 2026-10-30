@@ -487,6 +487,21 @@ def _boed_call(script, req):
     return json.loads(p.stdout)
 
 
+def _check_helper_python(modules):
+    """Refuse up front, before anything moves, if UED_BOED_PYTHON can't
+    import what a boed/ helper needs."""
+    try:
+        p = subprocess.run([BOED_PYTHON, '-c', 'import ' + ', '.join(modules)],
+                           capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f'UED_BOED_PYTHON ({BOED_PYTHON}) did not run: '
+                           f'{exc}') from None
+    if p.returncode:
+        last = (p.stderr.strip().splitlines() or ['?'])[-1]
+        raise RuntimeError(f'UED_BOED_PYTHON ({BOED_PYTHON}) lacks what the '
+                           f"helper needs ({', '.join(modules)}): {last}")
+
+
 def _bsa_step(x, q, scans_done, right_bound):
     """One call of boed/ued_t0.py (see there): the T0 posterior after
     `scans_done` scans and the next scan's range."""
@@ -1569,6 +1584,7 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
             raise ValueError(f'n_points ({n_points}) must exceed '
                              'time_zero.eig_grid_steps '
                              f"({int(tz.get('eig_grid_steps', 10))})")
+        _check_helper_python(('torch', 'pyro', 'xopt'))
     ov = check_overlap(m, setup, overlap_tolerance_px)
     if not ov['accepted']:
         return {**ov, 'stage': stage, 'reason': 'overlap check failed: '
