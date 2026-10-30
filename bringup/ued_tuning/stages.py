@@ -33,8 +33,8 @@ of every write with the real PV behind it.
   6 overlap_pump_laser  pump laser onto the e-beam cross on the YAG
   7 tune_sample_position  main beam into the Andor through hole, raster the
                         sample for the pattern (escalates by design)
-  8 find_time_zero      verify the overlap, pump-probe delay scan (a stand-in
-                        for the LCLS DAQ / BOED scan)
+  8 find_time_zero      verify the overlap, Bi pump-probe delay scan: a
+                        zooming grid, or the 2026-04 amortized BOED scan
 """
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import diffraction
 from .channels import CHANNELS, HOLDER_OUT, HOLDER_YAG, to_pv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(
@@ -71,6 +72,11 @@ BSA_GUESS_SHIFT = 8.0      # deg: window centre above onset_guess (see there)
 BOED_MODELS = os.environ.get(
     'UED_BOED_MODEL_DIR',
     '/sdf/group/mli/zhezhang/ued/agentic/boed/models/bsa_full_v2')
+# Stage 8's BOED option: the 2026-04 posterior-sampling delay models (Sam
+# Klein, ued_tuning BOED_t_zero), copied into boed/models; run the same way,
+# through boed/ued_delay_t0.py in UED_BOED_PYTHON.
+BOED_DELAY_MODELS = os.environ.get(
+    'UED_BOED_DELAY_MODEL_DIR', str(BOED_DIR / 'models' / 'delay_t0_2026-04'))
 OPERATOR_HINT = {
     'diag_holder': 'the diagnostic screen (YAGS:AS01:270) is moved by an '
                    'operator, not the agent: insert or extract it from the '
@@ -470,18 +476,23 @@ def schottky_scan(m, setup, coarse_step=5.0, fine_step=0.5,
                    record=record)
 
 
-def _bsa_step(x, q, scans_done, right_bound):
-    """One call of boed/ued_t0.py (see there): the T0 posterior after
-    `scans_done` scans and the next scan's range."""
-    req = {'model_dir': BOED_MODELS, 'x_deg': x, 'q': q,
-           'scans_done': scans_done, 'right_bound': right_bound}
-    p = subprocess.run([BOED_PYTHON, 'ued_t0.py'], input=json.dumps(req),
+def _boed_call(script, req):
+    """Run a boed/ helper in UED_BOED_PYTHON (it has torch): JSON in, out."""
+    p = subprocess.run([BOED_PYTHON, script], input=json.dumps(req),
                        capture_output=True, text=True, cwd=BOED_DIR,
                        timeout=300)
     if p.returncode:
         raise RuntimeError(p.stderr.strip().splitlines()[-1]
                            if p.stderr.strip() else f'exit {p.returncode}')
     return json.loads(p.stdout)
+
+
+def _bsa_step(x, q, scans_done, right_bound):
+    """One call of boed/ued_t0.py (see there): the T0 posterior after
+    `scans_done` scans and the next scan's range."""
+    return _boed_call('ued_t0.py', {
+        'model_dir': BOED_MODELS, 'x_deg': x, 'q': q,
+        'scans_done': scans_done, 'right_bound': right_bound})
 
 
 def _bsa_check(points, emission, thr, margin=4.0, span=12.0,
@@ -1111,12 +1122,108 @@ def tune_sample_position(m, setup, sample='bi', span_mm=0.15, points=7,
 
 
 # ---------------------------------------------------------------- stage 8
-def _erf_model(d, i0, a, d0, w):
+# The Bi pump-probe signal: Delta I/I (%) at a Bi ring, from Andor frames
+# taken pump ON, OFF, OFF, ON at each delay (Fuhao's 2026-04 measurement,
+# diffraction.py). Every hand-set number is in the setup file's time_zero
+# section. The simulator has no ring images: there each frame is its
+# analytic Bragg intensity (diffraction_signal), the same ON/OFF arithmetic.
+def _tz_need(tz, key):
+    """setup['time_zero'][key], or SetupError naming it."""
+    v = tz.get(key)
+    if v is None:
+        raise auto.SetupError(f'time_zero.{key} is not set in '
+                              f'{auto.setup_path()}: ask an operator for it')
+    return v
+
+
+def _drop_sign(tz):
+    """+1 if the signal drops toward higher delay, -1 toward lower."""
+    toward = str(_tz_need(tz, 'signal_drops_toward'))
+    if toward not in ('lower', 'higher'):
+        raise auto.SetupError("time_zero.signal_drops_toward is 'lower' or "
+                              f"'higher', not {toward!r}")
+    return 1 if toward == 'higher' else -1
+
+
+def _pp_context(rec, setup, tz):
+    """What every measurement of a run shares: frame wait, ring band, and
+    on the real machine the ring centre (time_zero.ring_center_px, or found
+    from 5 pump-off frames as the April notebooks did when it is null)."""
+    t_exp = float(auto.need(setup, 'andor', 'diffraction', 'exposure'))
+    ctx = {'sim': getattr(rec.m, 'kind', '') == 'sim',
+           'wait_s': float(tz.get('frame_wait_exposures', 2)) * t_exp,
+           'n_avg': int(tz.get('n_avg', 1)),
+           'move_s_per_mm': float(tz.get('move_s_per_mm', 0.12)),
+           'settle_s': float(tz.get('settle_s', 1.0)),
+           'delay_now': float(rec.get('delay')),
+           'shutter': None, 'ring_center_px': None, 'static_image': None}
+    if ctx['sim']:
+        return ctx
+    s_cal = float(_tz_need(tz, 's_cal'))
+    ctx.update(s_cal=s_cal, hole=tuple(_tz_need(tz, 'hole_mask_px')),
+               corner=int(tz.get('corner_px', 30)),
+               band=diffraction.ring_band(float(_tz_need(tz, 'ring_s')),
+                                          s_cal,
+                                          int(tz.get('ring_half_width', 8))))
+    centre = tz.get('ring_center_px')
+    if centre is None:
+        stack = []
+        for _ in range(5):
+            rec.sleep(t_exp)
+            stack.append(rec.image('cam_far_andor'))
+        stack = np.array(stack, dtype=float)
+        clean, _ = diffraction.subtract_corner_median_stack(stack,
+                                                            ctx['corner'])
+        img = np.nanmean(diffraction.apply_circular_nan_mask(
+            clean, *ctx['hole']), axis=0)
+        srch = tz.get('ring_search_px') or {}
+        centre = diffraction.find_ring_center(
+            img, r_min=srch.get('r_min', 80), r_max=srch.get('r_max', 450),
+            hole_radius=srch.get('hole_radius', 50))
+        ctx['static_image'] = img
+    ctx['ring_center_px'] = [float(centre[0]), float(centre[1])]
+    return ctx
+
+
+def _pp_measure(rec, ctx, delay):
+    """Move the delay (wait |move| x move_s_per_mm + settle_s), then
+    n_avg x (ON, OFF, OFF, ON); the mean Delta I/I (%)."""
+    rec.put('delay', float(delay))
+    rec.sleep(abs(float(delay) - ctx['delay_now']) * ctx['move_s_per_mm']
+              + ctx['settle_s'])
+    ctx['delay_now'] = float(delay)
+    vals = []
+    for _ in range(ctx['n_avg']):
+        frames = []
+        for pump in (1, 0, 0, 1):
+            if ctx['shutter'] != pump:
+                rec.put('pump_shutter', pump)
+                ctx['shutter'] = pump
+            rec.sleep(ctx['wait_s'])
+            if ctx['sim']:
+                frames.append([float(rec.get('diffraction_signal'))])
+            else:
+                frames.append(rec.image('cam_far_andor'))
+        if ctx['sim']:
+            prof, band = np.array(frames), None
+        else:
+            prof = diffraction.profiles(np.array(frames, dtype=float),
+                                        ctx['ring_center_px'], ctx['hole'],
+                                        ctx['s_cal'], ctx['corner'])
+            band = ctx['band']
+        vals.append(diffraction.delta_i_over_i(prof[[0, 3]], prof[[1, 2]],
+                                               band))
+    return float(np.nanmean(vals))
+
+
+def _erf_model(d, base, drop, d0, w, sign=1):
     from scipy.special import erf
-    return i0 * (1 - a * 0.5 * (1 + erf((d - d0) / (math.sqrt(2) * w))))
+    return base - drop * 0.5 * (1 + erf(sign * (d - d0)
+                                        / (math.sqrt(2) * w)))
 
 
-def _fit_step(ds, ss):
+def _fit_step(ds, ss, sign=1):
+    """Fit the drop: baseline, drop, t0, width (sign as _drop_sign)."""
     from scipy.optimize import curve_fit
     ds, ss = np.asarray(ds), np.asarray(ss)
     ok = np.isfinite(ss)
@@ -1124,27 +1231,169 @@ def _fit_step(ds, ss):
     if len(ds) < 6:
         return None
     g = np.gradient(ss, ds)
-    p0 = [float(ss[:3].mean()), max(float(ss.max() - ss.min()), 0.01),
-          float(ds[int(np.argmin(g))]), max(abs(ds[1] - ds[0]), 0.005)]
+    before = ss[:3] if sign > 0 else ss[-3:]
+    p0 = [float(before.mean()), max(float(ss.max() - ss.min()), 0.01),
+          float(ds[int(np.argmin(sign * g))]), max(abs(ds[1] - ds[0]), 0.005)]
+
+    def model(d, base, drop, d0, w):
+        return _erf_model(d, base, drop, d0, w, sign)
     try:
-        p, cov = curve_fit(_erf_model, ds, ss, p0=p0, maxfev=20000)
+        p, cov = curve_fit(model, ds, ss, p0=p0, maxfev=20000)
     except Exception:
         return None
     err = np.sqrt(np.diag(cov))
-    return {'i0': p[0], 'drop': p[1], 't0_mm': p[2], 'width_mm': abs(p[3]),
-            't0_err_mm': err[2], 'residual': float(np.std(
-                ss - _erf_model(ds, *p)))}
+    return {'baseline': p[0], 'drop': p[1], 't0_mm': p[2],
+            'width_mm': abs(p[3]), 't0_err_mm': err[2],
+            'residual': float(np.std(ss - model(ds, *p)))}
 
 
-def find_time_zero(m, setup, sample='bi', center_mm=None, coarse_span_mm=3.0,
-                   coarse_points=31, fine_span_mm=0.3, fine_points=31,
-                   n_avg=4, target_err_mm=0.005, overlap_tolerance_px=3.0):
+def _delay_frame(tz):
+    """mm <-> the model's ps for the scan window time_zero.boed_window_mm:
+    t = 0 at the before-t0 end, growing toward where the signal drops."""
+    lo, hi = (float(v) for v in _tz_need(tz, 'boed_window_mm'))
+    if not lo < hi:
+        raise auto.SetupError('time_zero.boed_window_mm must be [low, high]')
+    if _drop_sign(tz) < 0:
+        return (lambda d: (hi - d) * PS_PER_MM,
+                lambda t: hi - t / PS_PER_MM, (hi - lo) * PS_PER_MM)
+    return (lambda d: (d - lo) * PS_PER_MM,
+            lambda t: lo + t / PS_PER_MM, (hi - lo) * PS_PER_MM)
+
+
+def _boed_delay_scan(measure, tz, y_shift, y_scale, n_points):
+    """The April posterior-sampling policy: grid_steps grid points from the
+    before-t0 end of the window, then each point one draw from the t0
+    posterior (boed/ued_delay_t0.py), the model advancing one round per
+    block_size points. Returns the points and the final posterior."""
+    to_ps, to_mm, span = _delay_frame(tz)
+    n_grid = int(tz.get('boed_grid_steps', 10))
+    block = int(tz.get('boed_block_size', 10))
+    if n_points <= n_grid:
+        raise ValueError(f'n_points ({n_points}) must exceed '
+                         f'time_zero.boed_grid_steps ({n_grid})')
+    base = {'model_dir': BOED_DELAY_MODELS, 'y_shift': float(y_shift),
+            'y_scale': float(y_scale),
+            'grid_steps': n_grid, 'block_size': block,
+            'theta_range_ps': [0.0, span],
+            'param_bounds_ps': tz.get('boed_param_bounds_ps')}
+    grid = np.linspace(0.0, span, n_grid)
+    ts, ys, steps = [], [], []
+    for i in range(n_points):
+        if i < n_grid:
+            t = float(grid[i])
+        else:
+            r = _boed_call('ued_delay_t0.py', {**base, 't_ps': ts, 'y': ys,
+                                               'seed': i})
+            t = r['next_ps']
+            steps.append({'n': i, 'round': r['round'],
+                          't0_median_mm': to_mm(r['t0_ps']['median']),
+                          'width_mm': (r['t0_ps']['q99'] - r['t0_ps']['q01'])
+                          / PS_PER_MM})
+        d = to_mm(t)
+        ts.append(t)
+        ys.append(float(measure(d)))
+    final = _boed_call('ued_delay_t0.py', {**base, 't_ps': ts, 'y': ys,
+                                           'seed': n_points})
+    q = final['t0_ps']
+    t0 = {'median_mm': to_mm(q['median']),
+          'interval_mm': sorted([to_mm(q['q01']), to_mm(q['q99'])]),
+          'width_mm': (q['q99'] - q['q01']) / PS_PER_MM,
+          'std_fs': q['std'] * 1e3, 'model': final['model'],
+          'param_bounds_ps': final['param_bounds_ps']}
+    return {'t0': t0, 'steps': steps,
+            'points': [(to_mm(t), y) for t, y in zip(ts, ys)]}
+
+
+def _boed_delay_check(points, t0_mm, tz, y_shift, y_scale):
+    """Does the signal agree with the BOED t0? Points more than
+    check_margin_mm before it (the baseline) must sit min_drop_pct above
+    those as far after it.
+
+    Also whether the signal is what the models expect, from the first grid
+    points (the two ends of the window): the baseline at -y_shift and the
+    drop, times y_scale, near boed_reference_drop_pct (April's ~4.4 %; the
+    models went wrong at twice that in simulation). Suggested values come
+    back either way, for the operator to set."""
+    sign = _drop_sign(tz)
+    margin = float(tz.get('check_margin_mm', 0.5))
+    n_grid = int(tz.get('boed_grid_steps', 10))
+    ref = float(tz.get('boed_reference_drop_pct', 4.4))
+    ends = [y for _, y in points[:n_grid]]
+    g_base = float(np.median(ends[:3]))
+    g_drop = g_base - float(np.median(ends[-3:]))
+    out = {'ok': False, 'why': '', 'notes': [],
+           'grid_baseline_pct': g_base, 'grid_drop_pct': g_drop,
+           'y_shift_suggested': -g_base,
+           'y_scale_suggested': ref / g_drop if g_drop > 0 else None}
+    tol = float(tz.get('y_shift_tolerance', 1.0))
+    if abs(g_base + float(y_shift)) > tol:
+        out['notes'].append(f'baseline before t0 is {g_base:.2f} %, so '
+                            f'y_shift {y_shift:g} leaves it at '
+                            f'{g_base + y_shift:.2f} instead of 0: consider '
+                            f'y_shift {-g_base:.2f}')
+    if g_drop > 0 and not 0.67 * ref <= g_drop * y_scale <= 1.5 * ref:
+        out['notes'].append(f'the drop is {g_drop:.2f} %, {g_drop * y_scale:.2f}'
+                            f' after y_scale {y_scale:g}; the models expect '
+                            f'~{ref:g}: consider y_scale {ref / g_drop:.2f}')
+    before = [y for d, y in points if sign * (t0_mm - d) > margin]
+    after = [y for d, y in points if sign * (d - t0_mm) > margin]
+    out.update(n_before=len(before), n_after=len(after))
+    if len(before) < 3 or len(after) < 3:
+        out['why'] = (f'too few points more than {margin:g} mm either side '
+                      f'of t0 ({len(before)} before, {len(after)} after)')
+    else:
+        base, low = float(np.median(before)), float(np.median(after))
+        out.update(baseline_pct=base, drop_pct=base - low)
+        need = float(tz.get('min_drop_pct', 1.0))
+        if base - low < need:
+            out['why'] = (f'the signal after t0 is only {base - low:.2f} % '
+                          f'below the baseline (need {need:g} %)')
+        else:
+            out['ok'] = True
+    if out['notes'] and not out['ok']:
+        out['why'] += '; ' + '; '.join(out['notes'])
+    return out
+
+
+def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
+                   coarse_span_mm=3.0, coarse_points=31, fine_span_mm=0.3,
+                   fine_points=31, target_err_mm=0.005,
+                   overlap_tolerance_px=3.0, y_shift=None, y_scale=None,
+                   n_points=None, boed_max_width_mm=None):
     """Procedure (8): verify the spatial overlap (6) on the YAG; go to the
     sample (Bi); Andor at the diffraction settings; pump HWP to its
-    pump-probe setpoint (~2 uJ); open the pump shutter; delay scans that
-    zoom in on the Bragg-peak drop (a stand-in for the LCLS DAQ scan or the
-    Run 6 BOED script); close the pump shutter."""
+    pump-probe setpoint (~2 uJ); measure the Bi Delta I/I at delays (pump
+    ON, OFF, OFF, ON at each); close the pump shutter.
+
+    method='grid': scans that zoom in on the drop (coarse +-coarse_span_mm
+    around center_mm or the current delay, then two finer ones), fitted
+    with an erf step. method='boed': the 2026-04 amortized BOED scan in
+    the window time_zero.boed_window_mm: a 10-point grid, then points drawn
+    from the t0 posterior (n_points in all, 80 in April); t0 is the
+    posterior median. It stops for an operator, and puts the delay back,
+    if the 98 % interval is wider than boed_max_width_mm or the signal
+    disagrees with it (_boed_delay_check). y_shift, y_scale, n_points and
+    boed_max_width_mm default to the setup file's time_zero values.
+    """
     stage = '8 time zero'
+    if method not in ('grid', 'boed'):
+        raise ValueError(f"method is 'grid' or 'boed', not {method!r}")
+    tz = auto.need(setup, 'time_zero')
+    sign = _drop_sign(tz)
+    if method == 'boed':
+        y_shift = float(_tz_need(tz, 'boed_y_shift') if y_shift is None
+                        else y_shift)
+        y_scale = float(tz.get('boed_y_scale', 1.0) if y_scale is None
+                        else y_scale)
+        n_points = int(_tz_need(tz, 'boed_n_points') if n_points is None
+                       else n_points)
+        max_w = float(_tz_need(tz, 'boed_max_width_mm')
+                      if boed_max_width_mm is None else boed_max_width_mm)
+        _delay_frame(tz)                  # window set and sane, before moving
+        if n_points <= int(tz.get('boed_grid_steps', 10)):
+            raise ValueError(f'n_points ({n_points}) must exceed '
+                             'time_zero.boed_grid_steps '
+                             f"({int(tz.get('boed_grid_steps', 10))})")
     ov = check_overlap(m, setup, overlap_tolerance_px)
     if not ov['accepted']:
         return {**ov, 'stage': stage, 'reason': 'overlap check failed: '
@@ -1159,30 +1408,81 @@ def find_time_zero(m, setup, sample='bi', center_mm=None, coarse_span_mm=3.0,
     rec.put('gun_uv_shutter', 1)
     auto.pump_energy(rec, setup, 'pump_probe')
     auto.power_meter_out(rec, setup)
-    c = float(center_mm if center_mm is not None else rec.get('delay'))
+    ctx = _pp_context(rec, setup, tz)
+    delay0 = ctx['delay_now']
+    common = {'method': method, 'overlap': ov,
+              'ring_center_px': ctx['ring_center_px'],
+              'signal': 'Bi Delta I/I (%), pump ON/OFF/OFF/ON',
+              'n_avg': ctx['n_avg']}
+    arrays = {'static_andor': ctx['static_image']}
 
     def sig(dl):
-        rec.put('delay', float(dl))
-        rec.sleep(0.2)
-        return avg(rec, 'diffraction_signal', n_avg)
+        return _pp_measure(rec, ctx, dl)
 
-    rec.put('pump_shutter', 1)
     try:
+        if method == 'boed':
+            try:
+                boed = _boed_delay_scan(sig, tz, y_shift, y_scale, n_points)
+            except Exception as exc:      # helper, models, or a measurement
+                auto.close_pump_shutter(rec)
+                rec.put('delay', delay0)
+                return _result(stage, rec, True, False,
+                               f'BOED scan failed ({type(exc).__name__}: '
+                               f"{exc}); rerun with method='grid'",
+                               needs_operator=True, **common)
+            t0 = boed['t0']
+            boed['check'] = _boed_delay_check(boed['points'],
+                                              t0['median_mm'], tz, y_shift,
+                                              y_scale)
+            problem = None
+            if t0['width_mm'] > max_w:
+                problem = (f"t0 uncertain: 98 % interval {t0['width_mm']:.3f}"
+                           f" mm wide (limit {max_w:g})")
+                if boed['check']['notes']:
+                    problem += '; ' + '; '.join(boed['check']['notes'])
+            elif not boed['check']['ok']:
+                problem = ('the BOED t0 disagrees with the measured signal: '
+                           + boed['check']['why'])
+            record = auto.save_record('time_zero', {
+                'sample': sample, **common, 'y_shift': y_shift,
+                'y_scale': y_scale,
+                'boed': boed, 'accepted': problem is None},
+                arrays=arrays)
+            out = dict(common, boed={k: boed[k] for k in
+                                     ('t0', 'check', 'steps')},
+                       points=boed['points'], y_shift=y_shift,
+                       y_scale=y_scale,
+                       t0_mm=t0['median_mm'], record=record)
+            if problem:
+                auto.close_pump_shutter(rec)
+                rec.put('delay', delay0)
+                return _result(stage, rec, True, False, problem + '; check '
+                               "the signal, y_shift, or rerun with "
+                               "method='grid'", needs_operator=True, **out)
+            rec.put('delay', float(t0['median_mm']))
+            note = '; '.join(boed['check']['notes'])
+            return _result(stage, rec, True, True, 't0 found' + (
+                f' (note: {note})' if note else ''), **out,
+                t0_interval_mm=t0['interval_mm'],
+                t0_width_ps=t0['width_mm'] * PS_PER_MM)
+
+        c = float(center_mm if center_mm is not None else delay0)
         coarse = [(float(dl), sig(dl)) for dl in
                   np.linspace(c - coarse_span_mm, c + coarse_span_mm,
                               coarse_points)]
-        f1 = _fit_step(*zip(*coarse)) if any(
+        need = float(tz.get('min_drop_pct', 1.0))
+        f1 = _fit_step(*zip(*coarse), sign=sign) if any(
             math.isfinite(s) for _, s in coarse) else None
-        if f1 is None or f1['drop'] < 0.01:
+        if f1 is None or f1['drop'] < need:
             return _result(stage, rec, True, False, 't0 not found in the '
                            'coarse window', needs_operator=True,
-                           coarse=coarse)
+                           coarse=coarse, **common)
         f2, fine, levels = f1, [], [{'span_mm': coarse_span_mm, **f1}]
         for span in (fine_span_mm, fine_span_mm / 10):
             fine = [(float(dl), sig(dl)) for dl in
                     np.linspace(f2['t0_mm'] - span, f2['t0_mm'] + span,
                                 fine_points)]
-            f = _fit_step(*zip(*fine))
+            f = _fit_step(*zip(*fine), sign=sign)
             if f is None:
                 break
             f2 = f
@@ -1192,13 +1492,13 @@ def find_time_zero(m, setup, sample='bi', center_mm=None, coarse_span_mm=3.0,
         rec.put('delay', float(f2['t0_mm']))
     finally:
         auto.close_pump_shutter(rec)
-    accepted = f2['t0_err_mm'] < target_err_mm and f2['drop'] > 0.01
+    accepted = f2['t0_err_mm'] < target_err_mm and f2['drop'] > need
     record = auto.save_record('time_zero', {
-        'sample': sample, 't0_mm': f2['t0_mm'], 'levels': levels,
-        'coarse': coarse, 'fine': fine})
+        'sample': sample, **common, 't0_mm': f2['t0_mm'], 'levels': levels,
+        'coarse': coarse, 'fine': fine}, arrays=arrays)
     return _result(stage, rec, True, accepted,
                    't0 found' if accepted else 't0 uncertain',
-                   needs_operator=not accepted, overlap=ov,
+                   needs_operator=not accepted, **common,
                    t0_mm=f2['t0_mm'], t0_err_fs=f2['t0_err_mm'] * PS_PER_MM
                    * 1e3, width_fs=f2['width_mm'] * PS_PER_MM * 1e3,
                    bragg_drop=f2['drop'], coarse=coarse, fine=fine,

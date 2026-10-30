@@ -43,6 +43,8 @@ Training is the same loop for both. Each round simulates 1M trajectories under t
 | `infer_bsa_real_data.py` | Replays the BSA protocol on recorded scans by picking measured points, then plots the T0 posterior and posterior predictive |
 | `train.sbatch` | Slurm job for either training script |
 | `ued_t0.py` | One BSA step for the UED tools: the T0 posterior after the scans so far and the next scan (JSON in, JSON out) |
+| `ued_delay_t0.py` | One step of the delay-stage time-zero scan (stage 8, below): the pump-probe t0 posterior after the points so far and the next delay |
+| `models/delay_t0_2026-04/` | The 2026-04 posterior-sampling delay models it uses (7 files, ~2.2 MB) |
 
 ## Running
 
@@ -94,4 +96,38 @@ Checked on 2026-10-29:
 - With the shift, guesses from 10° below to 7° above the onset ran 40 points, against 93 for the grid. Of 12 runs, 9 were accepted and 3 refused (one by the charge check, two by the interval width), with no wrong phase accepted. Accepted T0s were 1.3–3.1° before the threshold crossing, and the crossing interpolated from the BSA points was within 0.2–2° of it. Each run took 22–78 s of wall time on iana.
 
 The virtual UED's charge-vs-phase curve is our own model, not a recorded UED scan. How the protocol does on a real UED Schottky scan is still to be seen.
+
+## Pump-probe time zero on the delay stage (stage 8)
+
+Stage 8 of `ued_tuning` (`find_time_zero`) has `method='boed'`. It runs the amortized policy from the 2026-04-08 beamtime: Sam Klein's `posterior_sampling.ipynb` in the [ued_tuning](https://github.com/slaclab/ued_tuning) repo (`BOED_t_zero/`), with its models. The models came from commit 41def0a and are copied into `models/delay_t0_2026-04/`, so they ship with this repo. `UED_BOED_DELAY_MODEL_DIR` points elsewhere. They are not trained here: the training code isn't in either repo.
+
+These models are a different problem from the Schottky models above. Their T0 is pump-probe time zero, in ps along the pump delay stage. The data is the Bi ΔI/I at a diffraction ring. Each model is a DeepSet encoder over raw (t in ps, ΔI/I in %) points with a 15-component Gaussian mixture head. Its T0 is normalized to the bounds stored in the model (`posterior.param_bounds`, [5, 260] ps).
+
+The policy is as in the notebook. The first 10 points are a grid over the scan window, from its before-t0 end. Each later point is one draw from the t0 posterior, clamped to the window. The model advances one round (`round_00` … `round_06`, trained for 10 … 70 points) every 10 points. The stage runs `ued_delay_t0.py` in `UED_BOED_PYTHON` once per point after the grid. It takes the posterior median after the last point as t0, and leaves the delay there. It stops for an operator, and puts the delay back, if the 98 % interval is wider than `boed_max_width_mm`, or if the points more than 0.5 mm before t0 aren't at least `min_drop_pct` above those as far after it.
+
+Every hand-set value is in `ued_setup.yaml`, under `time_zero`, and the agent can override the main ones per call. Values from April:
+
+- **Scan window:** `boed_window_mm` [170, 210] mm, 266 ps. The model's t = 0 sits at the before-t0 end (210 mm, because the signal drops toward lower delay: `signal_drops_toward`).
+- **`boed_y_shift`:** 3.0. It's added to ΔI/I so that the baseline before t0 sits at 0, as the models expect. April used 3.0, 3.5 and 0.5 (low signal).
+- **`boed_y_scale`:** 1.0. It's multiplied in afterwards, to bring the drop near April's ~4.4 %.
+- **Points:** 80 per run (`boed_n_points`), 1 measurement each (`n_avg`).
+- **Signal:** ring s = 7.30 Å⁻¹ ± 8 bins; s calibration 0.01924 Å⁻¹/px; hole mask [501, 518, 45]. The ring centre is found from 5 pump-off frames at the start, unless `ring_center_px` is set.
+
+The result's `boed.check` reports the baseline and drop seen at the ends of the grid, with a suggested `y_shift` and `y_scale`.
+
+Two changes from the notebook:
+
+- **t0 denormalization:** it uses the models' own [5, 260] ps. The notebook used [0, 266], which put its t0 about 0.1 mm lower than these models give. `boed_param_bounds_ps` restores the notebook's bounds.
+- **ps per mm:** this repo's (c = 299792458 m/s), not the notebook's c = 3e8, a 0.07 % difference.
+
+The ΔI/I measurement is Fuhao Ji's `bi_pp_signal_2026.py`, ported to `bringup/ued_tuning/diffraction.py` with Zhe Zhang's `find_ring_center.py`. On the same frames the port gives the originals' numbers exactly. The grid method now measures the same signal.
+
+Checked on 2026-10-30:
+
+- **April runs replayed through the models:** runs 1–3, 80 points each, gave t0 = 189.18, 189.06 and 189.07 mm, with 98 % intervals 0.37, 0.73 and 0.29 mm wide. The low-signal run 5 gave a 15 mm wide interval, which would be refused.
+- **Stand-in machine, April-sized signal:** a stand-in with an analytic erf step (no GPT), t0 61.234 mm, drop 4.4 %, noise 1 %: t0 = 61.10 mm, interval 0.37 mm, accepted.
+- **Larger drops:** with drops of 8 % and 14 % (the virtual UED's size) the posterior went wrong, and both runs were refused by the checks. With `y_scale` 0.3 the 14 % drop gave t0 = 61.21, 61.21 and 61.22 mm on three noise seeds, all accepted, with intervals 0.38–0.45 mm.
+- **Synthetic Andor ring images** shaped like the April data (t0 189.07 mm, baseline −3.5 %): the ring centre came out within 0.003 px. BOED gave t0 = 189.075 mm (interval 0.33 mm). The grid method gave 189.070 mm.
+
+The models only worked on drops near April's. Check `y_scale` against the first grid points of a run before trusting it on a new sample or pump energy. On the real machine the deployed tools are read-only, so the stage stops at its first write until writes are allowed.
 
