@@ -134,6 +134,12 @@ Notes per stage:
   say they're off, tell the operator the suggested values before rerunning
   with `y_shift=` / `y_scale=`. Use `grid` unless the operator asks for
   BOED.
+- **8, while it runs.** A scan takes 20-35 min. The tool sends a progress
+  message per point (delay, Delta I/I, the t0 estimate so far). The first
+  message names the record folder, which fills from the start:
+  `live.jsonl`, one line per point, and `live.png`, the points so far with
+  t0. Tell the operator the folder at the start so they can watch the
+  plot. If the run is stopped, the points are still in `live.jsonl`.
 
 ## Camera views (sample chamber camera + chamber light)
 

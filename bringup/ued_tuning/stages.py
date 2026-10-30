@@ -1216,6 +1216,88 @@ def _pp_measure(rec, ctx, delay):
     return float(np.nanmean(vals))
 
 
+class LiveLog:
+    """Stage 8's record folder, from the start of the scan: live.jsonl
+    gets one line per measured point (delay, Delta I/I, the t0 estimate
+    and width at that moment), live.png a plot of the points so far
+    (if matplotlib is there), and record.json the result at the end. An
+    aborted run keeps its points. `progress`, if given, gets the same
+    events (the MCP server turns them into progress messages)."""
+
+    def __init__(self, kind, header, total, progress=None):
+        self.folder = auto.record_folder(kind)
+        self.total, self.progress, self.points = total, progress, []
+        self.t0 = None
+        (self.folder / 'live.jsonl').write_text(json.dumps(
+            {'event': 'start', **_num(header)}) + '\n')
+        self._emit({'event': 'start', 'folder': str(self.folder),
+                    'total': total, 'message': f'{header.get("method")} '
+                    f'time-zero scan, {total} points; live log in '
+                    f'{self.folder}'})
+
+    def _emit(self, ev):
+        if self.progress:
+            try:
+                self.progress(ev)
+            except Exception:              # a message must not stop a run
+                pass
+
+    def point(self, delay, signal, phase, t0_mm=None, width_mm=None,
+              **extra):
+        if width_mm is not None and not math.isfinite(width_mm):
+            width_mm = None                 # a fit without a covariance
+        self.t0 = (t0_mm, width_mm) if t0_mm is not None else self.t0
+        n = len(self.points) + 1
+        self.points.append((float(delay), float(signal)))
+        ev = {'event': 'point', 'n': n, 'of': self.total, 'phase': phase,
+              'delay_mm': float(delay), 'signal_pct': float(signal),
+              't0_mm': self.t0 and self.t0[0],
+              'width_mm': self.t0 and self.t0[1], **extra}
+        with open(self.folder / 'live.jsonl', 'a') as f:
+            f.write(json.dumps(_num(ev)) + '\n')
+        t0 = ('' if not self.t0 else f'; t0 {self.t0[0]:.3f} mm'
+              + (f' (98 % width {self.t0[1]:.3f} mm)'
+                 if self.t0[1] is not None else ''))
+        ev['message'] = (f'point {n}/{self.total} ({phase}): delay '
+                         f'{delay:.3f} mm, Delta I/I {signal:.2f} %{t0}')
+        self._emit(ev)
+        self._plot()
+
+    def done(self, reason, t0_mm=None):
+        with open(self.folder / 'live.jsonl', 'a') as f:
+            f.write(json.dumps(_num({'event': 'done', 'reason': reason,
+                                     't0_mm': t0_mm})) + '\n')
+        self._emit({'event': 'done', 'n': len(self.points),
+                    'of': self.total, 'message': f'done: {reason}'})
+
+    def _plot(self):
+        try:
+            import matplotlib
+            matplotlib.use('Agg')
+            import matplotlib.pyplot as plt
+        except Exception:
+            return
+        d, y = np.array(self.points).T
+        fig, ax = plt.subplots(1, 2, figsize=(11, 4))
+        sc = ax[0].scatter(d, y, c=np.arange(len(d)), cmap='viridis', s=18)
+        if self.t0:
+            ax[0].axvline(self.t0[0], color='r', lw=1)
+            if self.t0[1]:
+                ax[0].axvspan(self.t0[0] - self.t0[1] / 2,
+                              self.t0[0] + self.t0[1] / 2, color='r',
+                              alpha=0.15)
+        fig.colorbar(sc, ax=ax[0], label='point')
+        ax[0].set(xlabel='delay (mm)', ylabel='Delta I/I (%)',
+                  title=f'{len(d)}/{self.total} points')
+        ax[1].plot(np.arange(1, len(d) + 1), d, 'o-', ms=3)
+        ax[1].set(xlabel='point', ylabel='delay (mm)', title='sequence')
+        for a in ax:
+            a.grid(alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(self.folder / 'live.png', dpi=80)
+        plt.close(fig)
+
+
 def _erf_model(d, base, drop, d0, w, sign=1):
     from scipy.special import erf
     return base - drop * 0.5 * (1 + erf(sign * (d - d0)
@@ -1260,7 +1342,7 @@ def _delay_frame(tz):
             lambda t: lo + t / PS_PER_MM, (hi - lo) * PS_PER_MM)
 
 
-def _boed_delay_scan(measure, tz, y_shift, y_scale, n_points):
+def _boed_delay_scan(measure, tz, y_shift, y_scale, n_points, log=None):
     """The April posterior-sampling policy: grid_steps grid points from the
     before-t0 end of the window, then each point one draw from the t0
     posterior (boed/ued_delay_t0.py), the model advancing one round per
@@ -1292,6 +1374,12 @@ def _boed_delay_scan(measure, tz, y_shift, y_scale, n_points):
         d = to_mm(t)
         ts.append(t)
         ys.append(float(measure(d)))
+        if log:
+            log.point(d, ys[-1], 'grid' if i < n_grid else 'posterior',
+                      **({'t0_mm': steps[-1]['t0_median_mm'],
+                          'width_mm': steps[-1]['width_mm'],
+                          'round': steps[-1]['round']}
+                         if i >= n_grid else {}))
     final = _boed_call('ued_delay_t0.py', {**base, 't_ps': ts, 'y': ys,
                                            'seed': n_points})
     q = final['t0_ps']
@@ -1359,7 +1447,7 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
                    coarse_span_mm=3.0, coarse_points=31, fine_span_mm=0.3,
                    fine_points=31, target_err_mm=0.005,
                    overlap_tolerance_px=3.0, y_shift=None, y_scale=None,
-                   n_points=None, boed_max_width_mm=None):
+                   n_points=None, boed_max_width_mm=None, progress=None):
     """Procedure (8): verify the spatial overlap (6) on the YAG; go to the
     sample (Bi); Andor at the diffraction settings; pump HWP to its
     pump-probe setpoint (~2 uJ); measure the Bi Delta I/I at delays (pump
@@ -1374,6 +1462,9 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
     if the 98 % interval is wider than boed_max_width_mm or the signal
     disagrees with it (_boed_delay_check). y_shift, y_scale, n_points and
     boed_max_width_mm default to the setup file's time_zero values.
+
+    From the start of the scan the record folder holds a live log (LiveLog:
+    live.jsonl, live.png); `progress` gets an event per point.
     """
     stage = '8 time zero'
     if method not in ('grid', 'boed'):
@@ -1415,20 +1506,39 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
               'signal': 'Bi Delta I/I (%), pump ON/OFF/OFF/ON',
               'n_avg': ctx['n_avg']}
     arrays = {'static_andor': ctx['static_image']}
+    total = (n_points if method == 'boed'
+             else coarse_points + 2 * fine_points)
+    log = LiveLog('time_zero', {**common, 'sample': sample,
+                                'y_shift': y_shift, 'y_scale': y_scale,
+                                'window_mm': tz.get('boed_window_mm')
+                                if method == 'boed' else None},
+                  total, progress)
+    common['record'] = str(log.folder)
+    phase = {'name': 'coarse', 't0': None}
 
     def sig(dl):
         return _pp_measure(rec, ctx, dl)
 
+    def logged(dl):                     # grid method: log each point
+        y = sig(dl)
+        t0 = phase['t0']
+        log.point(dl, y, phase['name'], **({'t0_mm': t0[0],
+                                            'width_mm': t0[1]} if t0
+                                           else {}))
+        return y
+
     try:
         if method == 'boed':
             try:
-                boed = _boed_delay_scan(sig, tz, y_shift, y_scale, n_points)
+                boed = _boed_delay_scan(sig, tz, y_shift, y_scale, n_points,
+                                        log)
             except Exception as exc:      # helper, models, or a measurement
                 auto.close_pump_shutter(rec)
                 rec.put('delay', delay0)
-                return _result(stage, rec, True, False,
-                               f'BOED scan failed ({type(exc).__name__}: '
-                               f"{exc}); rerun with method='grid'",
+                reason = (f'BOED scan failed ({type(exc).__name__}: '
+                          f"{exc}); rerun with method='grid'")
+                log.done(reason)
+                return _result(stage, rec, True, False, reason,
                                needs_operator=True, **common)
             t0 = boed['t0']
             boed['check'] = _boed_delay_check(boed['points'],
@@ -1447,7 +1557,8 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
                 'sample': sample, **common, 'y_shift': y_shift,
                 'y_scale': y_scale,
                 'boed': boed, 'accepted': problem is None},
-                arrays=arrays)
+                arrays=arrays, folder=log.folder)
+            log.done(problem or 't0 found', t0['median_mm'])
             out = dict(common, boed={k: boed[k] for k in
                                      ('t0', 'check', 'steps')},
                        points=boed['points'], y_shift=y_shift,
@@ -1467,19 +1578,22 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
                 t0_width_ps=t0['width_mm'] * PS_PER_MM)
 
         c = float(center_mm if center_mm is not None else delay0)
-        coarse = [(float(dl), sig(dl)) for dl in
+        coarse = [(float(dl), logged(dl)) for dl in
                   np.linspace(c - coarse_span_mm, c + coarse_span_mm,
                               coarse_points)]
         need = float(tz.get('min_drop_pct', 1.0))
         f1 = _fit_step(*zip(*coarse), sign=sign) if any(
             math.isfinite(s) for _, s in coarse) else None
         if f1 is None or f1['drop'] < need:
+            log.done('t0 not found in the coarse window')
             return _result(stage, rec, True, False, 't0 not found in the '
                            'coarse window', needs_operator=True,
                            coarse=coarse, **common)
         f2, fine, levels = f1, [], [{'span_mm': coarse_span_mm, **f1}]
         for span in (fine_span_mm, fine_span_mm / 10):
-            fine = [(float(dl), sig(dl)) for dl in
+            phase.update(name=f'fine +-{span:g} mm',
+                         t0=(f2['t0_mm'], 2 * 2.3263 * f2['t0_err_mm']))
+            fine = [(float(dl), logged(dl)) for dl in
                     np.linspace(f2['t0_mm'] - span, f2['t0_mm'] + span,
                                 fine_points)]
             f = _fit_step(*zip(*fine), sign=sign)
@@ -1493,16 +1607,17 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
     finally:
         auto.close_pump_shutter(rec)
     accepted = f2['t0_err_mm'] < target_err_mm and f2['drop'] > need
-    record = auto.save_record('time_zero', {
+    auto.save_record('time_zero', {
         'sample': sample, **common, 't0_mm': f2['t0_mm'], 'levels': levels,
-        'coarse': coarse, 'fine': fine}, arrays=arrays)
+        'coarse': coarse, 'fine': fine}, arrays=arrays, folder=log.folder)
+    log.done('t0 found' if accepted else 't0 uncertain', f2['t0_mm'])
     return _result(stage, rec, True, accepted,
                    't0 found' if accepted else 't0 uncertain',
                    needs_operator=not accepted, **common,
                    t0_mm=f2['t0_mm'], t0_err_fs=f2['t0_err_mm'] * PS_PER_MM
                    * 1e3, width_fs=f2['width_mm'] * PS_PER_MM * 1e3,
                    bragg_drop=f2['drop'], coarse=coarse, fine=fine,
-                   levels=levels, record=record)
+                   levels=levels)
 
 
 STAGES = {

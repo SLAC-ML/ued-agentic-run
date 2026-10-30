@@ -19,13 +19,14 @@ Launched over stdio by ``python -m ued_tuning`` (PYTHONPATH = bringup/).
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import os
 import sys
 import time
 
-from fastmcp import FastMCP
+from fastmcp import Context, FastMCP
 
 from . import stages
 from .channels import CHANNELS
@@ -73,6 +74,40 @@ def _call(name, fn, **kwargs):
     out['backend'] = BACKEND
     out['wall_s'] = round(time.time() - t0, 1)
     return json.dumps(stages._num(out))
+
+
+async def _call_with_progress(name, fn, ctx, **kwargs):
+    """_call in a worker thread, so the stage's progress events (one per
+    point of a long scan) reach the client while it runs: each becomes a
+    progress notification and an info log message. A client that sent no
+    progress token gets only the log messages; a failed message never stops
+    the stage."""
+    loop = asyncio.get_running_loop()
+
+    async def notify(ev):
+        msg = ev.get('message', '')
+        if ev.get('of'):
+            try:
+                await ctx.report_progress(ev.get('n', 0), ev['of'], msg)
+            except TypeError:               # FastMCP without `message`
+                with contextlib.suppress(Exception):
+                    await ctx.report_progress(ev.get('n', 0), ev['of'])
+            except Exception:
+                pass
+        with contextlib.suppress(Exception):
+            await ctx.info(msg, logger_name=name)
+
+    sent = []
+
+    def progress(ev):
+        sent.append(asyncio.run_coroutine_threadsafe(notify(ev), loop))
+
+    out = await asyncio.to_thread(_call, name, fn, progress=progress,
+                                  **kwargs)
+    for f in sent:                      # all messages out before the result
+        with contextlib.suppress(Exception):
+            await asyncio.wrap_future(f)
+    return out
 
 
 def _action(name, body):
@@ -414,7 +449,8 @@ async def tune_sample_position(sample: str = 'bi', span_mm: float = 0.15,
 
 
 @mcp.tool()
-async def find_time_zero(sample: str = 'bi', method: str = 'grid',
+async def find_time_zero(ctx: Context, sample: str = 'bi',
+                         method: str = 'grid',
                          center_mm: float | None = None,
                          coarse_span_mm: float = 3.0,
                          fine_span_mm: float = 0.3,
@@ -445,12 +481,17 @@ async def find_time_zero(sample: str = 'bi', method: str = 'grid',
         n_points: with method='boed', points per run (setup default 80).
         boed_max_width_mm: with method='boed', stop for an operator (and
             put the delay back) if t0's 98 % interval is wider than this.
+
+    While it runs, it sends a progress message per point (delay, Delta I/I,
+    the t0 estimate so far), and the record folder fills from the start:
+    live.jsonl (one line per point) and live.png. The first message names
+    the folder: pass it on to the operator.
     """
-    return _call('find_time_zero', stages.find_time_zero, sample=sample,
-                 method=method, center_mm=center_mm,
-                 coarse_span_mm=coarse_span_mm, fine_span_mm=fine_span_mm,
-                 y_shift=y_shift, y_scale=y_scale, n_points=n_points,
-                 boed_max_width_mm=boed_max_width_mm)
+    return await _call_with_progress(
+        'find_time_zero', stages.find_time_zero, ctx, sample=sample,
+        method=method, center_mm=center_mm, coarse_span_mm=coarse_span_mm,
+        fine_span_mm=fine_span_mm, y_shift=y_shift, y_scale=y_scale,
+        n_points=n_points, boed_max_width_mm=boed_max_width_mm)
 
 
 if BACKEND == 'sim':
