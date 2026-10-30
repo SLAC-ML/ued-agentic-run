@@ -17,6 +17,15 @@ They are deployed to `/sdf/group/mli/zhezhang/ued/agentic/scripts/`
   runs/<name>/    one folder per run; Slurm logs in runs/slurm-*.out
 ```
 
+## Reading UED PVs (caget)
+
+`epics_env.sh` puts S3DF's EPICS base (`caget`, `cainfo`, `camonitor`) on `PATH`. It also points Channel Access at the UED gateway, `172.24.3.10:5110`. Hutch PVs (`UED:*`) answer under their own names, accelerator-side ones only under the `UED:USER:` prefix, and `uedget` adds that prefix where it's needed. The gateway allows reads only.
+
+    source ~/group/ued/agentic/scripts/epics_env.sh
+    caget UED:USR:MMN:14:07                       # collimator
+    caget UED:USER:SIOC:AS01:KY03:0:AREQ          # gun amplitude setpoint
+    uedget SIOC:AS01:KY03:0:AREQ SOLN:AS01:121:BCTRL UED:USR:MMN:14:07
+
 ## Running
 
 Environment (GPT on `PATH`, `GPTLICENSE`, Python env):

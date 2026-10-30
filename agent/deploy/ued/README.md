@@ -13,6 +13,28 @@ rsync -av --exclude='/.env' --exclude='/.env.variant' --exclude='/build/' --excl
 
 There's no `--delete`, so a file removed from `agent/` also has to be removed by hand on S3DF. Never add `--delete` without those four excludes: it would wipe the key file and the build.
 
+### Two deployments (since 2026-10-29)
+
+The same source is deployed twice, with different host profiles. Each one has its own `.env`, `.env.variant`, `build/` and `var/`:
+
+| Deployment | Host profile | Runs on | PVs |
+|---|---|---|---|
+| `/sdf/group/mli/zhezhang/OspreyDeployments/UED` | `s3df` | S3DF (`sdfiana016`) | S3DF EPICS gateway; accelerator PVs under `UED:USER:` |
+| `/sdf/group/mli/zhezhang/OspreyDeployments/UED-daq` | `ued-daq` | `ued-daq` | direct Channel Access: `172.21.36.255:5064 172.27.99.255:5058` |
+
+Push a source change to both, then rebuild each:
+
+```bash
+for D in UED UED-daq; do
+  rsync -av --exclude='/.env' --exclude='/.env.variant' --exclude='/build/' --exclude='/var/' \
+      agent/ iana:/sdf/group/mli/zhezhang/OspreyDeployments/$D/
+done
+```
+
+The first build (`.venv-osprey/bin/osprey build`, which installs packages) of the `ued-daq` deployment can't run on iana as is. Osprey loads `.env`, whose `psproxy` doesn't resolve on S3DF, and that overrides the shell's proxy settings. So for that one build, point `.env`'s `HTTPS_PROXY`/`HTTP_PROXY` at `http://sdfproxy.sdf.slac.stanford.edu:3128` (it works from both hosts), then put them back. Later `--skip-deps` builds need no network. The first launch on `ued-daq` asks to trust `UED-daq/build` (see "One-time: trust the workspace").
+
+On 2026-10-29, from `ued-daq` every mapped PV answered, including the ones the S3DF gateway doesn't serve yet: the gate valves, the gun feedback states, the diagnostic screen and the scope. Both deployments share `bringup/`, the live setup file and the Badger folder on S3DF. A Badger run started from one deployment shows as `died` when polled from the other, which can't see the other host's process.
+
 ## Build (on iana)
 
 ```bash
