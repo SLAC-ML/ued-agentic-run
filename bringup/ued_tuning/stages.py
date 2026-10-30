@@ -487,6 +487,21 @@ def _boed_call(script, req):
     return json.loads(p.stdout)
 
 
+def _check_helper_python(modules):
+    """Refuse up front, before anything moves, if UED_BOED_PYTHON can't
+    import what a boed/ helper needs."""
+    try:
+        p = subprocess.run([BOED_PYTHON, '-c', 'import ' + ', '.join(modules)],
+                           capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f'UED_BOED_PYTHON ({BOED_PYTHON}) did not run: '
+                           f'{exc}') from None
+    if p.returncode:
+        last = (p.stderr.strip().splitlines() or ['?'])[-1]
+        raise RuntimeError(f'UED_BOED_PYTHON ({BOED_PYTHON}) lacks what the '
+                           f"helper needs ({', '.join(modules)}): {last}")
+
+
 def _bsa_step(x, q, scans_done, right_bound):
     """One call of boed/ued_t0.py (see there): the T0 posterior after
     `scans_done` scans and the next scan's range."""
@@ -1392,7 +1407,58 @@ def _boed_delay_scan(measure, tz, y_shift, y_scale, n_points, log=None):
             'points': [(to_mm(t), y) for t, y in zip(ts, ys)]}
 
 
-def _boed_delay_check(points, t0_mm, tz, y_shift, y_scale):
+def _eig_delay_scan(measure, tz, n_points, log=None):
+    """Non-amortized BOED (boed/delay_eig.py, an Xopt generator): a
+    grid of eig_grid_steps points over eig_window_mm (low to high, as
+    X.grid_evaluate), then each point where the expected information gain
+    is highest, among eig_candidates delays near t0 (a heuristic, see
+    DelayEIGGenerator.candidate_range; eig_margin_mm null: whole window). Each step is one call
+    of boed/ued_delay_eig.py, which refits the posterior from the priors
+    (eig_priors, eig_noise_prior), warm-started from the last fit."""
+    lo, hi = (float(v) for v in _tz_need(tz, 'eig_window_mm'))
+    n_grid = int(tz.get('eig_grid_steps', 10))
+    base = {'window_mm': [lo, hi],
+            'signal_drops_toward': str(_tz_need(tz, 'signal_drops_toward')),
+            'priors': _tz_need(tz, 'eig_priors'),
+            'noise_prior': tz.get('eig_noise_prior'),
+            'train_steps': tz.get('eig_train_steps'),
+            'n_candidates': tz.get('eig_candidates'),
+            'n_starts': tz.get('eig_starts'),
+            'margin_mm': tz['eig_margin_mm'] if 'eig_margin_mm' in tz
+            else 0.5}
+    ds, ys, steps, post = [], [], [], None
+    for i in range(n_points):
+        if i < n_grid:
+            d = float(np.linspace(lo, hi, n_grid)[i])
+        else:
+            r = _boed_call('ued_delay_eig.py', {**base, 'delay_mm': ds,
+                                                'y': ys, 'init_params': post,
+                                                'seed': i})
+            post, d = r['posterior'], float(r['next_mm'])
+            q = r['t0_mm']
+            steps.append({'n': i, 't0_median_mm': q['median'],
+                          'width_mm': q['q99'] - q['q01'],
+                          'noise_pct': r['noise_pct']})
+        ds.append(d)
+        ys.append(float(measure(d)))
+        if log:
+            log.point(d, ys[-1], 'grid' if i < n_grid else 'max EIG',
+                      **({'t0_mm': steps[-1]['t0_median_mm'],
+                          'width_mm': steps[-1]['width_mm'],
+                          'noise_pct': steps[-1]['noise_pct']}
+                         if i >= n_grid else {}))
+    final = _boed_call('ued_delay_eig.py', {**base, 'delay_mm': ds, 'y': ys,
+                                            'init_params': post,
+                                            'next': False, 'seed': n_points})
+    q = final['t0_mm']
+    t0 = {'median_mm': q['median'], 'interval_mm': [q['q01'], q['q99']],
+          'width_mm': q['q99'] - q['q01'], 'std_fs': q['std'] * PS_PER_MM
+          * 1e3, 'noise_pct': final['noise_pct'],
+          'posterior': final['posterior']}
+    return {'t0': t0, 'steps': steps, 'points': list(zip(ds, ys))}
+
+
+def _boed_delay_check(points, t0_mm, tz, y_shift=None, y_scale=None):
     """Does the signal agree with the BOED t0? Points more than
     check_margin_mm before it (the baseline) must sit min_drop_pct above
     those as far after it.
@@ -1401,9 +1467,14 @@ def _boed_delay_check(points, t0_mm, tz, y_shift, y_scale):
     points (the two ends of the window): the baseline at -y_shift and the
     drop, times y_scale, near boed_reference_drop_pct (April's ~4.4 %; the
     models went wrong at twice that in simulation). Suggested values come
-    back either way, for the operator to set."""
+    back either way, for the operator to set. With y_shift None (method
+    'eig', which fits its own baseline and drop) only the first check runs.
+    """
     sign = _drop_sign(tz)
     margin = float(tz.get('check_margin_mm', 0.5))
+    if y_shift is None:
+        return _side_check(points, t0_mm, tz, sign, margin,
+                           {'ok': False, 'why': '', 'notes': []})
     n_grid = int(tz.get('boed_grid_steps', 10))
     ref = float(tz.get('boed_reference_drop_pct', 4.4))
     ends = [y for _, y in points[:n_grid]]
@@ -1423,6 +1494,15 @@ def _boed_delay_check(points, t0_mm, tz, y_shift, y_scale):
         out['notes'].append(f'the drop is {g_drop:.2f} %, {g_drop * y_scale:.2f}'
                             f' after y_scale {y_scale:g}; the models expect '
                             f'~{ref:g}: consider y_scale {ref / g_drop:.2f}')
+    out = _side_check(points, t0_mm, tz, sign, margin, out)
+    if out['notes'] and not out['ok']:
+        out['why'] += '; ' + '; '.join(out['notes'])
+    return out
+
+
+def _side_check(points, t0_mm, tz, sign, margin, out):
+    """Points more than `margin` before t0 must sit min_drop_pct above
+    those as far after it."""
     before = [y for d, y in points if sign * (t0_mm - d) > margin]
     after = [y for d, y in points if sign * (d - t0_mm) > margin]
     out.update(n_before=len(before), n_after=len(after))
@@ -1438,8 +1518,6 @@ def _boed_delay_check(points, t0_mm, tz, y_shift, y_scale):
                           f'below the baseline (need {need:g} %)')
         else:
             out['ok'] = True
-    if out['notes'] and not out['ok']:
-        out['why'] += '; ' + '; '.join(out['notes'])
     return out
 
 
@@ -1463,12 +1541,19 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
     disagrees with it (_boed_delay_check). y_shift, y_scale, n_points and
     boed_max_width_mm default to the setup file's time_zero values.
 
+    method='eig': the non-amortized BOED of the April beamtime, fixed
+    (boed/delay_eig.py): a grid over eig_window_mm, then each point where
+    the expected information gain is highest under a posterior refit at
+    every step (~15 s of computing a point); 30 points in all. Accepted and
+    refused as 'boed', with the eig_ settings (n_points and
+    boed_max_width_mm override eig_n_points and eig_max_width_mm).
+
     From the start of the scan the record folder holds a live log (LiveLog:
     live.jsonl, live.png); `progress` gets an event per point.
     """
     stage = '8 time zero'
-    if method not in ('grid', 'boed'):
-        raise ValueError(f"method is 'grid' or 'boed', not {method!r}")
+    if method not in ('grid', 'boed', 'eig'):
+        raise ValueError(f"method is 'grid', 'boed' or 'eig', not {method!r}")
     tz = auto.need(setup, 'time_zero')
     sign = _drop_sign(tz)
     if method == 'boed':
@@ -1485,6 +1570,21 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
             raise ValueError(f'n_points ({n_points}) must exceed '
                              'time_zero.boed_grid_steps '
                              f"({int(tz.get('boed_grid_steps', 10))})")
+    if method == 'eig':
+        y_shift = y_scale = None          # the model fits baseline and drop
+        n_points = int(_tz_need(tz, 'eig_n_points') if n_points is None
+                       else n_points)
+        max_w = float(_tz_need(tz, 'eig_max_width_mm')
+                      if boed_max_width_mm is None else boed_max_width_mm)
+        lo, hi = (float(v) for v in _tz_need(tz, 'eig_window_mm'))
+        _tz_need(tz, 'eig_priors')
+        if not lo < hi:
+            raise auto.SetupError('time_zero.eig_window_mm must be [low, high]')
+        if n_points <= int(tz.get('eig_grid_steps', 10)):
+            raise ValueError(f'n_points ({n_points}) must exceed '
+                             'time_zero.eig_grid_steps '
+                             f"({int(tz.get('eig_grid_steps', 10))})")
+        _check_helper_python(('torch', 'pyro', 'xopt'))
     ov = check_overlap(m, setup, overlap_tolerance_px)
     if not ov['accepted']:
         return {**ov, 'stage': stage, 'reason': 'overlap check failed: '
@@ -1506,12 +1606,11 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
               'signal': 'Bi Delta I/I (%), pump ON/OFF/OFF/ON',
               'n_avg': ctx['n_avg']}
     arrays = {'static_andor': ctx['static_image']}
-    total = (n_points if method == 'boed'
+    total = (n_points if method in ('boed', 'eig')
              else coarse_points + 2 * fine_points)
     log = LiveLog('time_zero', {**common, 'sample': sample,
                                 'y_shift': y_shift, 'y_scale': y_scale,
-                                'window_mm': tz.get('boed_window_mm')
-                                if method == 'boed' else None},
+                                'window_mm': tz.get(f'{method}_window_mm')},
                   total, progress)
     common['record'] = str(log.folder)
     phase = {'name': 'coarse', 't0': None}
@@ -1528,15 +1627,18 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
         return y
 
     try:
-        if method == 'boed':
+        if method in ('boed', 'eig'):
             try:
-                boed = _boed_delay_scan(sig, tz, y_shift, y_scale, n_points,
-                                        log)
+                boed = (_boed_delay_scan(sig, tz, y_shift, y_scale, n_points,
+                                         log)
+                        if method == 'boed' else
+                        _eig_delay_scan(sig, tz, n_points, log))
             except Exception as exc:      # helper, models, or a measurement
                 auto.close_pump_shutter(rec)
                 rec.put('delay', delay0)
-                reason = (f'BOED scan failed ({type(exc).__name__}: '
-                          f"{exc}); rerun with method='grid'")
+                reason = (f'{method.upper()} scan failed '
+                          f'({type(exc).__name__}: {exc}); rerun with '
+                          "method='grid'")
                 log.done(reason)
                 return _result(stage, rec, True, False, reason,
                                needs_operator=True, **common)
@@ -1551,25 +1653,27 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
                 if boed['check']['notes']:
                     problem += '; ' + '; '.join(boed['check']['notes'])
             elif not boed['check']['ok']:
-                problem = ('the BOED t0 disagrees with the measured signal: '
-                           + boed['check']['why'])
+                problem = (f'the {method.upper()} t0 disagrees with the '
+                           'measured signal: ' + boed['check']['why'])
             record = auto.save_record('time_zero', {
                 'sample': sample, **common, 'y_shift': y_shift,
                 'y_scale': y_scale,
-                'boed': boed, 'accepted': problem is None},
+                method: boed, 'accepted': problem is None},
                 arrays=arrays, folder=log.folder)
             log.done(problem or 't0 found', t0['median_mm'])
-            out = dict(common, boed={k: boed[k] for k in
-                                     ('t0', 'check', 'steps')},
+            out = dict(common, **{method: {k: boed[k] for k in
+                                           ('t0', 'check', 'steps')}},
                        points=boed['points'], y_shift=y_shift,
                        y_scale=y_scale,
                        t0_mm=t0['median_mm'], record=record)
             if problem:
                 auto.close_pump_shutter(rec)
                 rec.put('delay', delay0)
+                hint = ('the signal, y_shift, ' if method == 'boed' else
+                        'the signal, the eig_priors, ')
                 return _result(stage, rec, True, False, problem + '; check '
-                               "the signal, y_shift, or rerun with "
-                               "method='grid'", needs_operator=True, **out)
+                               + hint + "or rerun with method='grid'",
+                               needs_operator=True, **out)
             rec.put('delay', float(t0['median_mm']))
             note = '; '.join(boed['check']['notes'])
             return _result(stage, rec, True, True, 't0 found' + (

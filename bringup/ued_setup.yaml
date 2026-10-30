@@ -112,6 +112,31 @@ time_zero:
   check_margin_mm: 0.5            # check: points this far either side of t0
   boed_param_bounds_ps: null      # t0 normalization; null = the models' own
                                   # [5, 260]. The April notebook used [0, 266].
+  # method='eig' (non-amortized BOED, boed/delay_eig.py): a posterior refit
+  # every point, the next point where the expected information gain is
+  # highest. Priors are Normal [loc, scale], April's (boed_double_exp_2-stage).
+  eig_window_mm: [170.0, 210.0]
+  eig_n_points: 30                # 10 grid + 20 (as in April)
+  eig_grid_steps: 10
+  eig_max_width_mm: 0.5           # stop for an operator if the 98 % interval is wider
+  eig_priors:
+    t0_mm: [190.0, 10.0]
+    a1: [1.0, 0.5]                # fast part of the drop, % Delta I/I
+    tau1_ps: [0.1, 0.1]
+    a2: [4.0, 1.0]                # slow part
+    tau2_ps: [1.0, 1.0]
+    baseline: [-3.5, 0.5]         # Delta I/I before t0, %
+    irf_ps: [0.1, 0.1]            # instrument response width
+  eig_noise_prior: [-0.7, 0.75]   # LogNormal [mu, sigma] of the noise, %:
+                                  # median 0.5 (April: 0.4-1). April pinned it at 0.135
+  eig_margin_mm: 0.5              # next point among delays within t0's 98 %
+                                  # interval + this: a heuristic, not April's (the
+                                  # EIG is about all 7 parameters, and over the
+                                  # whole window it goes for the decay tail once t0
+                                  # is known). null = the whole window, as April.
+  eig_candidates: 1000
+  eig_train_steps: 3000
+  eig_starts: 5                   # t0 starting points for each fit, across the window
 
 collimator:
   out_mm: 0.0

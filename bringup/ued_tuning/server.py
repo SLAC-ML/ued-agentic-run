@@ -472,16 +472,24 @@ async def find_time_zero(ctx: Context, sample: str = 'bi',
             2026-04 amortized BOED: a 10-point grid over
             time_zero.boed_window_mm, then points drawn from the t0
             posterior; t0 = posterior median; the reply's `boed` has the
-            posterior after every point and a check against the signal).
+            posterior after every point and a check against the signal),
+            or 'eig' (non-amortized BOED: a 10-point grid over
+            time_zero.eig_window_mm, then 20 points where the expected
+            information gain is highest, the posterior refit at every
+            point, ~15 s of computing each; the reply's `eig` has the
+            same parts). Use 'eig' if 'boed' is refused or its signal
+            check notes say the models don't fit.
         y_shift: with method='boed', added to Delta I/I so the baseline
             before t0 sits at 0, as the models expect. Default from the
             setup file; the reply's boed.check suggests a value.
         y_scale: with method='boed', then multiplied in, to bring the drop
             near the ~4.4 % the models worked on in April (boed.check
             suggests a value).
-        n_points: with method='boed', points per run (setup default 80).
-        boed_max_width_mm: with method='boed', stop for an operator (and
-            put the delay back) if t0's 98 % interval is wider than this.
+        n_points: with method='boed' or 'eig', points per run (setup
+            defaults 80 and 30).
+        boed_max_width_mm: with method='boed' or 'eig', stop for an
+            operator (and put the delay back) if t0's 98 % interval is
+            wider than this.
 
     While it runs, it sends a progress message per point (delay, Delta I/I,
     the t0 estimate so far), and the record folder fills from the start:
