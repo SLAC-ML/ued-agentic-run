@@ -6,6 +6,7 @@
 #      ued_stage.sh find_time_zero method=boed n_points=20     # shorter dry run
 #      ued_stage.sh --write find_time_zero method=boed         # for real
 #      ued_stage.sh --write find_time_zero method=grid center_mm=200
+#      ued_stage.sh --write find_time_zero method=eig            # the fallback
 #
 #  The same stage code the agent's tools run (bringup/ued_tuning), with
 #  bringup/run_stage.py as the backend:

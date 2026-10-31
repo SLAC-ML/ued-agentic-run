@@ -49,6 +49,9 @@ CAMPAIGN = [
     # UED's drop is ~14 %, three times April's: y_scale brings it near the
     # 4.4 % the models were trained on
     ('find_time_zero', {'method': 'boed', 'y_scale': 0.3}),
+    # and with the non-amortized BOED (eig_boed): the fallback when the
+    # amortized models don't fit the signal
+    ('find_time_zero', {'method': 'eig'}),
 ]
 
 

@@ -118,6 +118,10 @@ class DelayEIGGenerator(Generator):
 
     name = 'delay_eig'
     supports_no_objective: bool = True
+    # Xopt 3.1 has no supports_no_objective and refuses a VOCS without an
+    # objective: there the measurement rides as a (never optimized)
+    # objective instead of an observable (ued_delay_eig.make_generator).
+    supports_single_objective: bool = True
     priors: dict[str, list[float]] = dict(APRIL_PRIORS)
     noise_prior: list[float] = [-0.7, 0.75]      # LogNormal: median ~0.5 %
     signal_drops_toward: str = 'lower'
@@ -139,7 +143,8 @@ class DelayEIGGenerator(Generator):
 
     def _xy(self):
         x = torch.tensor(self.data[self.vocs.variable_names[0]].values).float()
-        y = torch.tensor(self.data[self.vocs.observable_names[0]].values).float()
+        y_name = (self.vocs.observable_names or self.vocs.objective_names)[0]
+        y = torch.tensor(self.data[y_name].values).float()
         return x, y
 
     def step_guess(self) -> float:

@@ -35,17 +35,32 @@ from xopt import VOCS
 from delay_eig import DelayEIGGenerator, frame
 
 
+def make_generator(window_mm, **kw):
+    """The generator over the delay window, with the measurement y as an
+    observable; on Xopt 3.1, which wants an objective, as a (never
+    optimized) objective instead."""
+    variables = {'delay': list(window_mm)}
+    try:
+        return DelayEIGGenerator(vocs=VOCS(variables=variables,
+                                           observables=['y']),
+                                 grid_steps=0, **kw)
+    except Exception as exc:
+        if 'at least one objective' not in str(exc):
+            raise
+        return DelayEIGGenerator(vocs=VOCS(variables=variables,
+                                           objectives={'y': 'MINIMIZE'}),
+                                 grid_steps=0, **kw)
+
+
 def step(req: dict) -> dict:
     pyro.set_rng_seed(int(req.get('seed', 0)))
-    vocs = VOCS(variables={'delay': [float(v) for v in req['window_mm']]},
-                observables=['y'])
     kw = {k: req[k] for k in ('priors', 'noise_prior', 'signal_drops_toward',
                               'train_steps', 'train_lr', 'n_candidates',
                               'eig_steps', 'n_starts', 'init_params')
           if req.get(k) is not None}
     if 'margin_mm' in req:                       # null: the whole window
         kw['margin_mm'] = req['margin_mm']
-    gen = DelayEIGGenerator(vocs=vocs, grid_steps=0, **kw)
+    gen = make_generator([float(v) for v in req['window_mm']], **kw)
     gen.add_data(frame(req['delay_mm'], req['y']))
     nxt = None
     if req.get('next', True):
