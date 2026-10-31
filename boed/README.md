@@ -170,6 +170,8 @@ python boed/posthoc_t0.py points.csv --prior t0_mm=200,15     # delay, signal co
 
 It reads `live.jsonl` (or `record.json`). The priors are April's, except t0 (window centre ± half the window) and the baseline (the 3 highest-delay points ± 1 %), which are set from the run; `--prior` overrides any of them. It prints t0 as the onset of the drop (the model's t0) and as the half-drop point, each with std and 98 % interval, plus the fitted baseline, drop and noise, the chains' medians and split R-hat. It writes `posthoc_t0.json` and `posthoc_t0.png` into the record folder (`--out` elsewhere). About 1 min on a laptop. Needs torch and pyro-ppl.
 
+**Quote the onset.** It is the model's t0, the same quantity the amortized scan and `eig` report. The half-drop point is only for comparison with midpoint (erf-style) definitions; it lies 0.15–0.2 mm lower on the 2026-10-30 runs.
+
 The width assumes independent noise of one size and this model's shape. t0 also drifts between runs, so compare repeat runs.
 
 Checked on 2026-10-30, on the first two UED runs of the amortized scan (80 points each, 190–230 mm):

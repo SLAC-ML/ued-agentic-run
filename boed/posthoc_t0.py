@@ -15,9 +15,10 @@ itself so that a new t0 or baseline doesn't fight them: t0_mm ~ N(window
 centre, half the window) and baseline ~ N(median of the 3 grid points at
 the before-t0 end, 1 %). --prior overrides any of them.
 
-Reports t0 as the onset of the drop (the model's t0) and as the half-drop
-point (where the fitted curve is halfway down), each with its median, std
-and 98 % interval, plus the fitted baseline, drop and noise, the chains'
+Reports t0 as the onset of the drop (the model's t0, the one to quote:
+the amortized scan and method='eig' report the same quantity) and, for
+comparison with midpoint definitions, the half-drop point (where the
+fitted curve is halfway down), each with its median, std and 98 % interval, plus the fitted baseline, drop and noise, the chains'
 medians and split R-hat. Writes posthoc_t0.json (and posthoc_t0.png with
 matplotlib) into --out, by default the record folder (or the CSV's folder).
 
