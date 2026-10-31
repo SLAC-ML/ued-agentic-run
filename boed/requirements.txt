@@ -6,6 +6,6 @@ torch>=2.1
 numpy
 matplotlib
 tqdm
-# method=eig of stage 8 (delay_eig.py, ued_delay_eig.py)
+# method=eig of stage 8 (delay_eig.py, ued_delay_eig.py) and posthoc_t0.py
 pyro-ppl
 xopt

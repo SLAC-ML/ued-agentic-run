@@ -47,6 +47,8 @@ Training is the same loop for both. Each round simulates 1M trajectories under t
 | `models/delay_t0_2026-04/` | The 2026-04 posterior-sampling delay models it uses (7 files, ~2.2 MB) |
 | `delay_eig.py` | Non-amortized BOED for the same task: `DelayEIGGenerator`, an Xopt generator (needs pyro-ppl and xopt) |
 | `ued_delay_eig.py` | One step of it for the UED tools (JSON in, JSON out) |
+| `delay_model.py` | The April double-exponential time-zero model (torch only) |
+| `posthoc_t0.py` | Post-hoc t0 for a stage-8 run by MCMC (NUTS, pyro), from its record folder |
 
 ## Running
 
@@ -156,4 +158,24 @@ Checked on 2026-10-30:
   - Synthetic Andor ring images shaped like April (t0 189.07 mm, little noise): t0 = 189.069 mm.
   - An analytic erf step in the virtual UED's frame (drop toward higher delay, 14 %, t0 61.234 mm): t0 = 61.218 mm. That is 0.016 mm (~0.1 ps) off, outside its 98 % interval (std 15 fs). Part of it is definition: the model's t0 is where the drop starts, the erf's is its midpoint. Part of it is the mean-field posterior. The interval widths are not accuracies.
 - **Cost:** ~15 s of computing per point on a laptop CPU (fits plus EIG), against ~26 s to measure one. 30 points take ~20 min.
+
+### Post-hoc check of a run (`posthoc_t0.py`)
+
+The amortized scan's 98 % interval comes from its network. To check a run without it, sample the full posterior of the April double-exponential model (`delay_model.py`, the noise learned) with NUTS, in 4 chains:
+
+```bash
+python boed/posthoc_t0.py /sdf/group/mli/zhezhang/ued/agentic/records/<stamp>_time_zero
+python boed/posthoc_t0.py points.csv --prior t0_mm=200,15     # delay, signal columns
+```
+
+It reads `live.jsonl` (or `record.json`). The priors are April's, except t0 (window centre ± half the window) and the baseline (the 3 highest-delay points ± 1 %), which are set from the run; `--prior` overrides any of them. It prints t0 as the onset of the drop (the model's t0) and as the half-drop point, each with std and 98 % interval, plus the fitted baseline, drop and noise, the chains' medians and split R-hat. It writes `posthoc_t0.json` and `posthoc_t0.png` into the record folder (`--out` elsewhere). About 1 min on a laptop. Needs torch and pyro-ppl.
+
+The width assumes independent noise of one size and this model's shape. t0 also drifts between runs, so compare repeat runs.
+
+Checked on 2026-10-30, on the first two UED runs of the amortized scan (80 points each, 190–230 mm):
+
+- **Run 1** (`y_shift` 3.0, refused at 1.18 mm): onset 210.332 mm, 98 % 0.061 mm (0.41 ps); half-drop 210.133 mm.
+- **Run 2** (`y_shift` 1.48, `y_scale` 0.95): onset 210.326 mm, 98 % 0.055 mm (0.37 ps); half-drop 210.171 mm. The amortized scan gave 210.356 mm, with a 0.29 mm interval.
+- **Fits and chains:** fitted noise 0.35 % and drop ~4.5 % in both runs, R-hat 1.00. April's priors and run-centred priors give the same onset to 0.003 mm.
+- **April runs 1–3:** onset 189.10, 189.08 and 189.02 mm. t0 drifted between those runs.
 
