@@ -235,8 +235,12 @@ _LIST = [
         'the scoring function does not exist yet', None, SIM_ONLY),
 
     # Pump-probe
-    _ch('delay', 'pump_probe', 'mm', True, 'Pump long delay stage',
-        'UED:USR:MMN:03:04', CONFIRMED),
+    # Two motors read DESC "Pump long delay": MMN:03:02 and MMN:03:04. The
+    # Bi T0 scans of 2026-10-30 (ued1023440 runs 2-53, Yusong Liu) stepped
+    # MMN:03:02 and saw the transient (T0 ~210.3 mm); MMN:03:04, which the
+    # laser team's notes name, sat at 141.364 mm throughout. To confirm.
+    _ch('delay', 'pump_probe', 'mm', True, 'Pump long delay stage (the one '
+        'the 2026-10-30 T0 scans stepped)', 'UED:USR:MMN:03:02', LIKELY),
     _ch('diffraction_signal', 'pump_probe', '', False,
         'Bragg-peak intensity (simulator only). On the real machine stage 8 '
         'computes the Bi Delta I/I from cam_far_andor frames itself '

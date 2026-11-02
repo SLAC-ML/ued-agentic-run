@@ -1162,8 +1162,11 @@ def _drop_sign(tz):
 
 def _pp_context(rec, setup, tz):
     """What every measurement of a run shares: frame wait, ring band, and
-    on the real machine the ring centre (time_zero.ring_center_px, or found
-    from 5 pump-off frames as the April notebooks did when it is null)."""
+    on the real machine the ring geometry: the centre
+    (time_zero.ring_center_px, or found from 5 pump-off frames as the April
+    notebooks did when it is null) and, with time_zero.ring_ellipse, the
+    ellipse the rings make (fitted to the Bi 110 ring from those frames,
+    as Yusong Liu's ued1023440 analysis does, or taken as set)."""
     t_exp = float(auto.need(setup, 'andor', 'diffraction', 'exposure'))
     ctx = {'sim': getattr(rec.m, 'kind', '') == 'sim',
            'wait_s': float(tz.get('frame_wait_exposures', 2)) * t_exp,
@@ -1171,7 +1174,8 @@ def _pp_context(rec, setup, tz):
            'move_s_per_mm': float(tz.get('move_s_per_mm', 0.12)),
            'settle_s': float(tz.get('settle_s', 1.0)),
            'delay_now': float(rec.get('delay')),
-           'shutter': None, 'ring_center_px': None, 'static_image': None}
+           'shutter': None, 'ring_center_px': None, 'static_image': None,
+           'ellipse': None, 'ring_ellipse': None}
     if ctx['sim']:
         return ctx
     s_cal = float(_tz_need(tz, 's_cal'))
@@ -1181,7 +1185,9 @@ def _pp_context(rec, setup, tz):
                                           s_cal,
                                           int(tz.get('ring_half_width', 8))))
     centre = tz.get('ring_center_px')
-    if centre is None:
+    ell = tz.get('ring_ellipse') or None
+    fit = bool(ell and ell.get('fit', True))
+    if centre is None or fit:
         stack = []
         for _ in range(5):
             rec.sleep(t_exp)
@@ -1191,11 +1197,26 @@ def _pp_context(rec, setup, tz):
                                                             ctx['corner'])
         img = np.nanmean(diffraction.apply_circular_nan_mask(
             clean, *ctx['hole']), axis=0)
+        ctx['static_image'] = img
+    if centre is None:
         srch = tz.get('ring_search_px') or {}
         centre = diffraction.find_ring_center(
             img, r_min=srch.get('r_min', 80), r_max=srch.get('r_max', 450),
             hole_radius=srch.get('hole_radius', 50))
-        ctx['static_image'] = img
+    if ell:
+        q = float(ell.get('b_over_a', 1.0))
+        th = float(np.deg2rad(ell.get('theta_deg', 0.0)))
+        if fit:
+            g = diffraction.fit_ring_ellipse(
+                img, centre, float(_tz_need(ell, 'fit_ring_s')) / s_cal, q,
+                th)
+            centre, q, th = g['centre_px'], g['b_over_a'], g['theta_rad']
+            ctx['ring_ellipse'] = {**g, 'theta_deg': float(np.rad2deg(th)),
+                                   'fitted': True}
+        else:
+            ctx['ring_ellipse'] = {'b_over_a': q, 'theta_deg':
+                                   float(np.rad2deg(th)), 'fitted': False}
+        ctx['ellipse'] = (q, th)
     ctx['ring_center_px'] = [float(centre[0]), float(centre[1])]
     return ctx
 
@@ -1224,7 +1245,8 @@ def _pp_measure(rec, ctx, delay):
         else:
             prof = diffraction.profiles(np.array(frames, dtype=float),
                                         ctx['ring_center_px'], ctx['hole'],
-                                        ctx['s_cal'], ctx['corner'])
+                                        ctx['s_cal'], ctx['corner'],
+                                        ellipse=ctx['ellipse'])
             band = ctx['band']
         vals.append(diffraction.delta_i_over_i(prof[[0, 3]], prof[[1, 2]],
                                                band))
@@ -1603,6 +1625,7 @@ def find_time_zero(m, setup, sample='bi', method='grid', center_mm=None,
     delay0 = ctx['delay_now']
     common = {'method': method, 'overlap': ov,
               'ring_center_px': ctx['ring_center_px'],
+              'ring_ellipse': ctx['ring_ellipse'],
               'signal': 'Bi Delta I/I (%), pump ON/OFF/OFF/ON',
               'n_avg': ctx['n_avg']}
     arrays = {'static_andor': ctx['static_image']}

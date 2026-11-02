@@ -116,6 +116,7 @@ Fuhao's layout sketch and the gun ramp script (`assets/layout/`, `assets/gun_ram
 13. **Gun ramp:** the AREQ → MV/m calibration; archived ramps for the virtual gun; the modulator mode and HV PVs, so the preconditions can be read instead of asked. If AREQ is parked above 0.05, a ramp starts by lowering it to 0.05. The gun is on TS8 (KY03) since 2026-10-28; TS1 (KY01) is offline.
 14. **Correctors:** which PV sets the kick, `BCTRL` (reads −145.6, EGU "kG-m", limits ±521) or `BDES` (reads 0)? What is the kick per unit? XC/YC04 are in A. XC/YC05 is in neither list.
 15. **Far-detector phosphor:** the old `ASTA:BO:2114-9:BIT2` is commented out in the run-7 list and doesn't answer. Is it still needed?
+16. **Pump delay stage:** two motors read DESC "Pump long delay": `UED:USR:MMN:03:02` and `UED:USR:MMN:03:04`. The laser team's notes name 03:04, but the 2026-10-30 Bi T0 scans (ued1023440 runs 2-53) stepped 03:02, found T0 near 210.3 mm, and left 03:04 at 141.364 mm. The tools' `delay` is now 03:02 (LIKELY). Which is which, and what does 03:04 move?
 
 ## Reference: Xinxin's Run 5/6 hutch-python code
 

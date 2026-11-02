@@ -16,7 +16,7 @@ Time zero (t0) is the pump delay at which the 400 nm pump and the electron bunch
 - Pump HWP setpoint for pump-probe, 22 deg (~2.2 uJ at PM1): references/pump-hwp-calibration.
 - Pump power meter out (0 mm).
 
-**The signal:** at each delay, Andor frames with the pump ON, OFF, OFF, ON. The tool removes each frame's corner background, masks the through hole (`time_zero.hole_mask_px`), and takes the radial profile about the ring centre. Delta I/I (%) is ON vs OFF at the Bi ring s = 7.30 1/A +/- 8 bins (s calibration 0.01924 1/A per px). The ring centre is found from 5 pump-off frames at the start, unless `time_zero.ring_center_px` is set. This is Fuhao Ji's `bi_pp_signal_2026.py` (April 2026), ported to `bringup/ued_tuning/diffraction.py`.
+**The signal:** at each delay, Andor frames with the pump ON, OFF, OFF, ON. The tool removes each frame's corner background, masks the through hole (`time_zero.hole_mask_px`), and takes the radial profile about the ring centre. Delta I/I (%) is ON vs OFF at the Bi ring s = 7.30 1/A +/- 8 bins (s calibration 0.01924 1/A per px). The ring centre is found from 5 pump-off frames at the start, unless `time_zero.ring_center_px` is set. This is Fuhao Ji's `bi_pp_signal_2026.py` (April 2026), ported to `bringup/ued_tuning/diffraction.py`. The rings are elliptical (b/a 0.889, major axis 87.8 deg from horizontal, 2026-10-30). As in Yusong Liu's ued1023440 analysis, the tool fits an ellipse to the Bi 110 ring from the pump-off frames and unwraps on the elliptical radius, with his calibration of 0.01879 1/A per px. On his mean image that triples the Bi 410 ring's contrast (61 % against 19 % as a circle), and puts it at s = 7.23 1/A, the band the tool uses (`time_zero.ring_ellipse`, `ring_s`, `s_cal`).
 
 **Three methods:**
 - `method='grid'` (default): scans that zoom in on the drop around `center_mm` (or the current delay), fitted with an erf step.
@@ -25,7 +25,7 @@ Time zero (t0) is the pump delay at which the 400 nm pump and the electron bunch
 
 **The models' expectations:** the baseline before t0 at 0 and a drop near April's ~4.4 %. `boed_y_shift` (added, 3.0 in April) and `boed_y_scale` (multiplied in) adjust for that, and the result's `boed.check` suggests values from the first grid points. In simulation the models went wrong on drops of 8 % and more unless `y_scale` brought them near 4.4 %.
 
-**Where t0 is:** in April it was near 189 mm on the pump long delay (`UED:USR:MMN:03:04`), and the signal dropped toward lower delay (`time_zero.signal_drops_toward: lower`). After the 2026-10 chamber swap the laser team expects it near 200 mm, with a large error.
+**Where t0 is:** on 2026-10-30 Yusong Liu's Bi T0 scans (ued1023440, runs 2-53) found it at about 210.3 mm on the pump long delay `UED:USR:MMN:03:02`, the stage they stepped. A coarse scan gave 211.2 +/- 3.8 mm; finer scans bracketed it at 210.25-210.40 mm. The signal drops toward lower delay (`time_zero.signal_drops_toward: lower`). In April it was near 189 mm. The BOED windows are now 190-230 mm and the eig prior 210.3 +/- 5 mm.
 
 **While it runs:** the record folder fills from the start: `live.jsonl` (one line per point: delay, Delta I/I, the t0 estimate so far) and `live.png` (the plot). A stopped run keeps its points.
 

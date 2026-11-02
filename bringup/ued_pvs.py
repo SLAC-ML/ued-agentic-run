@@ -98,8 +98,13 @@ CHANNELS = [
 
     # Pump-probe delay
     _motor('pump_long_delay', 'pump_probe', 'Pump long delay',
-           'UED:USR:MMN:03:04', None, 'mm', CONFIRMED,
-           'run-7 list (was MMN:03:05 until 2026-04-07)'),
+           'UED:USR:MMN:03:02', None, 'mm', LIKELY,
+           'the stage the 2026-10-30 Bi T0 scans stepped (ued1023440, '
+           'T0 ~210.3 mm); DESC "Pump long delay", as MMN:03:04 also reads'),
+    _motor('pump_long_delay_03_04', 'pump_probe', 'Pump long delay (MMN:03:04)',
+           'UED:USR:MMN:03:04', None, 'mm', CANDIDATE,
+           'run-7 list and the laser team\'s notes (was MMN:03:05 until '
+           '2026-04-07); sat at 141.364 mm while the T0 scans ran on 03:02'),
     _motor('pump_long_delay_drv03', 'pump_probe', 'Pump long delay DRV03',
            'UED:USR:MMN:06:06', None, 'mm', CANDIDATE,
            'DESC "Pump Long Delay DRV03"; not in the run-7 list'),

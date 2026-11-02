@@ -24,7 +24,7 @@ At the sample = PM1 x 0.636 (measured transmission). Peak fluence: 1.71 mJ/cm^2 
 Round Bi fluences: 1 mJ/cm^2 at 17.0 deg, 2 at 21.0, 3 at 23.5, 4 at 25.5. The Run 6 Bi angle, 16.245 deg, now gives under 1 mJ/cm^2.
 
 **Laser team's notes:**
-- Pump long delay `UED:USR:MMN:03:04`: 0-300 mm; higher = more pump delay = negative pump-probe time. Coarse time zero near 200 mm, with a large error: start with a wide scan.
+- Pump long delay `UED:USR:MMN:03:04` in these notes: 0-300 mm; higher = more pump delay = negative pump-probe time. On 2026-10-30, though, the Bi T0 scans stepped `UED:USR:MMN:03:02`, which also reads DESC "Pump long delay". The tools' `delay` is now 03:02 (to confirm): devices/sample-and-delay. Coarse time zero near 200 mm, with a large error: start with a wide scan.
 - The energy meter PM1 is viewable on the OPA laptop over VNC (UED home page, Laser tab).
 - The pump lens X/Y were temporarily on the XPS-06 panel ("400 nm Lens X / Y").
 - The yaw shifts the Z plane a lot: keep the yaw (and Z) where they are.

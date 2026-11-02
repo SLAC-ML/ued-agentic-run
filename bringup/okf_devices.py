@@ -76,7 +76,10 @@ PAGES = [
      'by hand: the yaw shifts the Z plane a lot, so keep yaw and Z where '
      'they are. Taught positions live in the setup file (references/'
      'setup-file). Pump delay: 0-300 mm, higher = more pump delay = '
-     'negative pump-probe time; coarse time zero near 200 mm (2026-10-28).'),
+     'negative pump-probe time. Two motors read "Pump long delay": the '
+     '2026-10-30 Bi T0 scans stepped MMN:03:02 and found T0 near 210.3 mm, '
+     'so `delay` is 03:02; 03:04, in the laser team\'s notes, is listed in '
+     'the PV map as a candidate (to confirm).'),
 ]
 
 

@@ -119,6 +119,8 @@ Every hand-set value is in `ued_setup.yaml`, under `time_zero`, and the agent ca
 
 The result's `boed.check` reports the baseline and drop seen at the ends of the grid, with a suggested `y_shift` and `y_scale`.
 
+**Since 2026-10-30 the setup file differs from April:** the windows are 190–230 mm around T0 ≈ 210.3 mm on `UED:USR:MMN:03:02` (Yusong Liu's ued1023440 scans). The ring signal now uses the elliptical-ring correction from his analysis (`diffraction.fit_ring_ellipse`; b/a 0.889, S calibration 0.01879 Å⁻¹ per px of elliptical radius, Bi 410 at 7.23 Å⁻¹). On his geometry, the round-ring processing read 2.2 % of a 5 % ring drop, and the elliptical one 4.9 %. So the drop the models see can be about twice April's for the same physics: read the `y_scale` suggestion from `boed.check`.
+
 Two changes from the notebook:
 
 - **t0 denormalization:** it uses the models' own [5, 260] ps. The notebook used [0, 266], which put its t0 about 0.1 mm lower than these models give. `boed_param_bounds_ps` restores the notebook's bounds.
