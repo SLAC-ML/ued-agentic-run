@@ -44,38 +44,9 @@ from pyro.contrib.oed.eig import marginal_eig
 from pyro.infer import SVI, Trace_ELBO
 from xopt.generator import Generator
 
-PS_PER_MM = 2e-3 / 299792458 * 1e12
-PARAMS = ('t0_mm', 'a1', 'tau1_ps', 'a2', 'tau2_ps', 'baseline', 'irf_ps')
-# April's priors (theta ~ N(-20, 10) about 210 mm), in this module's names.
-APRIL_PRIORS = {'t0_mm': [190.0, 10.0], 'a1': [1.0, 0.5],
-                'tau1_ps': [0.1, 0.1], 'a2': [4.0, 1.0],
-                'tau2_ps': [1.0, 1.0], 'baseline': [-3.5, 0.5],
-                'irf_ps': [0.1, 0.1]}
-
-
-def signal(x_mm, t0_mm, a1, tau1_ps, a2, tau2_ps, baseline, irf_ps, sign=-1):
-    """Delta I/I at delays x_mm: the IRF-convolved double-exponential drop
-    (TimeZeroDoubleExp of the April notebook). sign = -1: the signal drops
-    toward lower delay, +1: toward higher."""
-    a1 = torch.clip(a1, min=1e-6)
-    a2 = torch.clip(a2, min=1e-6)
-    tau1 = torch.clip(tau1_ps, min=1e-3)
-    tau2 = torch.clip(tau2_ps, min=1e-3)
-    s = torch.clip(irf_ps, min=1e-3)
-    dt = sign * (x_mm - t0_mm) * PS_PER_MM
-    sqrt2 = math.sqrt(2.0)
-
-    def component(a, tau):
-        q = (s ** 2 / tau - dt) / (s * sqrt2)
-        b1 = (a / 2) * torch.exp(-(dt ** 2) / (2 * s ** 2)) \
-            * torch.special.erfcx(q.clamp(min=0))
-        b2 = (a / 2) * torch.exp((s ** 2 / (2 * tau ** 2) - dt / tau)
-                                 .clamp(max=0)) \
-            * torch.special.erfc(q.clamp(max=0))
-        return torch.where(q >= 0, b1, b2)
-
-    step = -(a1 + a2) / 2 * (1 + torch.special.erf(dt / (s * sqrt2)))
-    return component(a1, tau1) + component(a2, tau2) + step + baseline
+# The model (signal, its parameters and April's priors) is shared with
+# posthoc_t0.py; names kept here for code that imports them from this module.
+from delay_model import APRIL_PRIORS, PARAMS, PS_PER_MM, signal  # noqa: E402,F401
 
 
 def _model(dists, noise, sign):
