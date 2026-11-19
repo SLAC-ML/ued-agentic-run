@@ -8,6 +8,8 @@
 #      fj_stage.sh gun_ramp                      # dry run (default)
 #      fj_stage.sh --write gun_ramp              # for real: ued-daq only, asks first
 #      fj_stage.sh schottky_scan diag_screen_by_operator=true
+#      fj_stage.sh last                          # newest run folders (result.json, plot.png)
+#      fj_stage.sh plot RUN_FOLDER               # redraw plot.png
 #
 #  Paths (override by exporting them first):
 #    UED_WORK   config/ and records/ live here
@@ -46,7 +48,9 @@ echo "records $UED_RECORDS_DIR"
 case "${1:-}" in
     snapshot)  shift; exec "$PY" "$REPO/bringup/snapshot.py" "$@" ;;
     positions) shift; exec "$PY" "$REPO/bringup/positions.py" "$@" ;;
-    "") sed -n '2,18p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    plot)      shift; exec "$PY" "$REPO/bringup/fj_plot.py" "$@" ;;   # redraw a run folder
+    last)      ls -dt "$UED_RECORDS_DIR"/*/ | head -"${2:-5}"; exit 0 ;;
+    "") sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
 esac
 cd "$REPO/bringup"
 exec "$PY" "$REPO/bringup/fj_run_stage.py" "$@"
