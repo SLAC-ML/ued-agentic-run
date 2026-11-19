@@ -10,6 +10,9 @@ backend, same dry run by default, same safety ranges, same write log.
     fj_stage.sh --write gun_ramp               # for real (asks to confirm)
     fj_stage.sh schottky_scan diag_screen_by_operator=true
     fj_stage.sh monitor_charge samples=20      # read-only helper
+    fj_stage.sh schottky_scan diag_screen_by_operator=true ebeam_by_operator=true
+        # ebeam_by_operator: you see the charge on the scope but the beam
+        # misses the diagnostic screen's YAG, so the camera check would stop it
 
 Each run is also saved and plotted (stages 1-7 draw nothing themselves):
 a folder under $UED_RECORDS_DIR with result.json, images.npz and plot.png.
@@ -93,9 +96,35 @@ def _ramp(backend, cfg):
 stages.ramp = _ramp
 
 
+_real_uv_toggle = stages.uv_toggle
+
+
+def _uv_toggle_by_operator(rec, cam, *a, **k):
+    """ebeam_by_operator=true: the operator has seen the e-beam signal (on
+    the scope), so the diagnostic-screen camera check does not stop the
+    stage. The camera is still read and reported; only its verdict is
+    overridden, and only for the diagnostic screen."""
+    t = _real_uv_toggle(rec, cam, *a, **k)
+    if cam == 'cam_diag_yag' and not t['seen']:
+        t = dict(t, seen=True, seen_by_camera=False,
+                 note='e-beam confirmed by the operator, not the camera')
+        rec.operator_steps.append(
+            'e-beam on the diagnostic screen confirmed by the operator '
+            '(camera saw no UV on/off difference)')
+    return t
+
+
 def _saving(name, fn):
     def run(m, setup, **kwargs):
-        out = fn(m, setup, **kwargs)
+        by_operator = bool(kwargs.pop('ebeam_by_operator', False))
+        stages.uv_toggle = (_uv_toggle_by_operator if by_operator
+                            else _real_uv_toggle)
+        try:
+            out = fn(m, setup, **kwargs)
+        finally:
+            stages.uv_toggle = _real_uv_toggle
+        if by_operator:
+            kwargs['ebeam_by_operator'] = True
         try:
             folder = auto.record_folder(name)
             data = dict(stages._num(out), fj_stage=name, fj_kwargs=kwargs,
