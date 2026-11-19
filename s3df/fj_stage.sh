@@ -4,7 +4,9 @@
 #  clone, with your own setup file and records folder (nothing is written to
 #  /sdf/group/mli/zhezhang).
 #
-#      fj_stage.sh snapshot                      # read-only beamline table
+#      fj_stage.sh snapshot                      # read-only beamline table, saved too
+#      fj_stage.sh diff                          # what changed between the last two snapshots
+#      fj_stage.sh edit                          # open the setup file
 #      fj_stage.sh gun_ramp                      # dry run (default)
 #      fj_stage.sh --write gun_ramp              # for real: ued-daq only, asks first
 #      fj_stage.sh schottky_scan diag_screen_by_operator=true
@@ -30,6 +32,7 @@ export UED_BRINGUP_DIR="$REPO/bringup" UED_BOED_DIR="$REPO/boed"
     echo "  cp /sdf/group/mli/zhezhang/ued/agentic/config/ued_setup.yaml $WORK/config/" >&2
     exit 1; }
 mkdir -p "$UED_RECORDS_DIR"
+SNAPS="$WORK/snapshots"
 [[ -x "$PY" ]] || { echo "fj_stage: no Python at $PY (set UED_PY)" >&2; exit 1; }
 
 unset PYTHONPATH                     # ued-daq's DAQ setup_env.sh exports one
@@ -46,11 +49,24 @@ export EPICS_CA_MAX_ARRAY_BYTES="${EPICS_CA_MAX_ARRAY_BYTES:-50000000}"
 echo "setup   $UED_SETUP_FILE"
 echo "records $UED_RECORDS_DIR"
 case "${1:-}" in
-    snapshot)  shift; exec "$PY" "$REPO/bringup/snapshot.py" "$@" ;;
+    snapshot)  shift; mkdir -p "$SNAPS"       # printed and saved
+               out="$SNAPS/$(date +%Y%m%d_%H%M%S).txt"
+               "$PY" "$REPO/bringup/snapshot.py" "$@" | tee "$out"
+               echo "saved   $out"
+               "$PY" "$REPO/bringup/fj_snapshot_images.py" "${out%.txt}" \
+                   || echo "  (camera images not saved)"
+               exit 0 ;;
+    diff)      new=$(ls -t "$SNAPS"/*.txt 2>/dev/null | sed -n 1p || true)
+               old=$(ls -t "$SNAPS"/*.txt 2>/dev/null | sed -n 2p || true)
+               [[ -n "$old" ]] || { echo "fj_stage: need two saved snapshots in $SNAPS" >&2; exit 1; }
+               echo "< $(basename "$old")   > $(basename "$new")"
+               diff <(grep -v '^UED snapshot' "$old") <(grep -v '^UED snapshot' "$new") \
+                   && echo "no change"; exit 0 ;;
+    edit)      exec "${EDITOR:-vi}" "$UED_SETUP_FILE" ;;
     positions) shift; exec "$PY" "$REPO/bringup/positions.py" "$@" ;;
     plot)      shift; exec "$PY" "$REPO/bringup/fj_plot.py" "$@" ;;   # redraw a run folder
     last)      ls -dt "$UED_RECORDS_DIR"/*/ | head -"${2:-5}"; exit 0 ;;
-    "") sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    "") sed -n '2,22p' "${BASH_SOURCE[0]}"; exit 0 ;;
 esac
 cd "$REPO/bringup"
 exec "$PY" "$REPO/bringup/fj_run_stage.py" "$@"
